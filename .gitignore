@@ -1,0 +1,55 @@
+# Dependencies
+node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+.next/
+out/
+dist/
+build/
+*.egg-info/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+data/vector_db/
+
+# Notion authentication (Session Replay)
+**/notion_auth.json
+apps/api/data/notion_auth.json
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Misc
+.cache/
+.turbo/

@@ -1,0 +1,28 @@
+# Runtime
+python>=3.12
+
+# Local AI & RAG
+ollama>=0.1.0
+chromadb>=0.4.0
+sentence-transformers>=2.2.0
+
+# Data Validation
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# Integrations
+notion-client>=2.2.0
+python-telegram-bot>=21.0.0
+mcp>=1.0.0
+
+# Async & Utilities
+httpx>=0.25.0
+loguru>=0.7.2
+python-dotenv>=1.0.0
+tenacity>=8.2.0
+playwright>=1.40.0
+beautifulsoup4>=4.12.0
+
+# Web UI
+streamlit>=1.28.0
+

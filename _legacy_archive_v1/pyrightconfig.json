@@ -1,0 +1,23 @@
+{
+  "include": [
+    "."
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    ".venv"
+  ],
+  "pythonVersion": "3.13",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingTypeStubs": false,
+  "pythonPath": "/Users/slava/Desktop/коллеги, обсудили/.venv/bin/python",
+  "extraPaths": [
+    ".",
+    "core",
+    "services",
+    "integrations"
+  ]
+}
+

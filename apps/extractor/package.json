@@ -1,0 +1,25 @@
+{
+  "name": "notion-extractor",
+  "version": "1.0.0",
+  "description": "Гибридный инструмент для извлечения данных из блоков AI Meeting Notes в Notion",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "setup-auth": "node setup-auth.js",
+    "extract": "node index.js",
+    "test": "node index.js"
+  },
+  "keywords": [
+    "notion",
+    "extraction",
+    "playwright",
+    "ai-blocks"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "playwright": "^1.48.0",
+    "dotenv": "^16.4.5"
+  }
+}

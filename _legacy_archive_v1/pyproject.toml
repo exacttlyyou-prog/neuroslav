@@ -1,0 +1,11 @@
+[tool.pyright]
+include = ["."]
+exclude = ["**/__pycache__", "**/node_modules", ".venv"]
+pythonVersion = "3.13"
+pythonPlatform = "Darwin"
+typeCheckingMode = "basic"
+reportMissingImports = "warning"
+reportMissingTypeStubs = false
+pythonPath = "/opt/homebrew/Caskroom/miniconda/base/bin/python"
+extraPaths = ["/opt/homebrew/Caskroom/miniconda/base/lib/python3.13/site-packages"]
+

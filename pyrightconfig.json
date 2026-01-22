@@ -1,0 +1,23 @@
+{
+  "include": [
+    "apps"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.venv",
+    "**/.*",
+    "_legacy_archive_v1/**",
+    "**/_legacy_archive_v1/**",
+    "**/run_last_meeting.py",
+    "**/telegram_service.py"
+  ],
+  "pythonVersion": "3.11",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "warning",
+  "reportMissingTypeStubs": false,
+  "ignore": [
+    "_legacy_archive_v1"
+  ]
+}

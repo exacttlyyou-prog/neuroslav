@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "digital-twin-api"
+version = "0.1.0"
+description = "FastAPI Backend for Digital Twin System"
+authors = ["Your Name"]
+
+[tool.black]
+line-length = 100
+target-version = ['py311']
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
