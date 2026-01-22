@@ -1,0 +1,8 @@
+_legacy_archive_v1/**
+api/**
+services/**
+core/**
+integrations/**
+**/run_last_meeting.py
+**/test_*.py
+**/_legacy_*.py

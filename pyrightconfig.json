@@ -1,23 +1,30 @@
 {
   "include": [
-    "apps"
+    "apps/api/app"
   ],
   "exclude": [
-    "**/__pycache__",
     "**/node_modules",
-    "**/.venv",
+    "**/__pycache__",
     "**/.*",
-    "_legacy_archive_v1/**",
-    "**/_legacy_archive_v1/**",
-    "**/run_last_meeting.py",
-    "**/telegram_service.py"
+    "_legacy_archive_v1",
+    "apps/web",
+    "apps/extractor"
+  ],
+  "ignore": [
+    "**"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "apps/api",
+      "venvPath": ".",
+      "venv": ".venv",
+      "extraPaths": [
+        "app"
+      ]
+    }
   ],
   "pythonVersion": "3.11",
   "pythonPlatform": "Darwin",
   "typeCheckingMode": "basic",
-  "reportMissingImports": "warning",
-  "reportMissingTypeStubs": false,
-  "ignore": [
-    "_legacy_archive_v1"
-  ]
+  "reportMissingImports": "warning"
 }

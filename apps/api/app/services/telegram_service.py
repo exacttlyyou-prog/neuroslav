@@ -126,7 +126,8 @@ class TelegramService:
             logger.warning("TELEGRAM_BOT_TOKEN не содержит ':', возможно неверный формат (ожидается: числа:буквы)")
         
         # Bot гарантированно не None здесь, т.к. мы проверили TELEGRAM_AVAILABLE
-        self.bot: Bot = Bot(token=settings.telegram_bot_token)  # type: ignore
+        assert Bot is not None, "Bot class must be available"
+        self.bot: Bot = Bot(token=settings.telegram_bot_token)
         self.admin_chat_id = settings.admin_chat_id
         self.ok_chat_id = settings.ok_chat_id
     

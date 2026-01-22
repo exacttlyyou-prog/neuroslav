@@ -21,16 +21,7 @@ app = FastAPI(
 # CORS для работы с Next.js Frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000", "http://localhost:3001", "http://localhost:3002",
-        "http://localhost:3003", "http://localhost:3004", "http://localhost:3005",
-        "http://localhost:3006", "http://localhost:3007", "http://localhost:3008",
-        "http://localhost:3009", "http://localhost:3010",
-        "http://127.0.0.1:3000", "http://127.0.0.1:3001", "http://127.0.0.1:3002",
-        "http://127.0.0.1:3003", "http://127.0.0.1:3004", "http://127.0.0.1:3005",
-        "http://127.0.0.1:3006", "http://127.0.0.1:3007", "http://127.0.0.1:3008",
-        "http://127.0.0.1:3009", "http://127.0.0.1:3010",
-    ],
+        allow_origins=["*"],  # Разрешаем все origins для Vercel
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -53,6 +44,13 @@ async def startup_event():
     await init_db()
     
     # Валидация токенов при старте
+    # #region agent log
+    import os
+    from datetime import datetime
+    log_line = f'{{"sessionId":"debug-session","timestamp":{int(datetime.now().timestamp()*1000)},"location":"main.py: startup","message":"Starting server, checking env and modules","data":{{"PYTHONPATH":os.environ.get("PYTHONPATH"),"cwd":os.getcwd(),"settings_notion":bool(settings.notion_token)}}}}\n'
+    with open("/Users/slava/Desktop/коллеги, обсудили/.cursor/debug.log", "a") as f:
+        f.write(log_line)
+    # #endregion
     settings = get_settings()
     
     # Проверка Notion токена
