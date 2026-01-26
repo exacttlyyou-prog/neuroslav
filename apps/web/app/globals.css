@@ -4,78 +4,48 @@
 
 @layer base {
   :root {
-    /* Нейтральная палитра 2026: beige и soft gray */
-    --background: 45 20% 97%;
-    --foreground: 30 10% 15%;
-    --card: 45 15% 99%;
-    --card-foreground: 30 10% 15%;
-    --popover: 45 15% 99%;
-    --popover-foreground: 30 10% 15%;
-    
-    /* Primary: deep blue акцент */
-    --primary: 210 50% 25%;
-    --primary-foreground: 45 20% 98%;
-    
-    /* Secondary: soft gray */
-    --secondary: 45 10% 92%;
-    --secondary-foreground: 30 10% 20%;
-    
-    /* Muted: очень светлый beige */
-    --muted: 45 15% 94%;
-    --muted-foreground: 30 8% 45%;
-    
-    /* Accent: warm orange для CTA */
-    --accent: 15 85% 55%;
-    --accent-foreground: 45 20% 98%;
-    
-    /* Destructive: мягкий красный */
-    --destructive: 0 70% 55%;
-    --destructive-foreground: 45 20% 98%;
-    
-    /* Borders и inputs: очень мягкие */
-    --border: 45 12% 88%;
-    --input: 45 12% 88%;
-    --ring: 210 50% 25%;
-    
-    /* Soft depth: тени для neumorphism */
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
-    --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.04);
-    --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.06);
-    
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
     --radius: 0.75rem;
   }
 
   .dark {
-    /* Темная тема: высокий контраст */
-    --background: 30 15% 8%;
-    --foreground: 45 20% 95%;
-    --card: 30 12% 10%;
-    --card-foreground: 45 20% 95%;
-    --popover: 30 12% 10%;
-    --popover-foreground: 45 20% 95%;
-    
-    --primary: 210 60% 65%;
-    --primary-foreground: 30 15% 8%;
-    
-    --secondary: 30 10% 15%;
-    --secondary-foreground: 45 20% 95%;
-    
-    --muted: 30 8% 18%;
-    --muted-foreground: 45 10% 70%;
-    
-    --accent: 15 75% 60%;
-    --accent-foreground: 30 15% 8%;
-    
-    --destructive: 0 65% 60%;
-    --destructive-foreground: 45 20% 95%;
-    
-    --border: 30 10% 20%;
-    --input: 30 10% 20%;
-    --ring: 210 60% 65%;
-    
-    --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-    --shadow-md: 0 2px 8px 0 rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 4px 16px 0 rgba(0, 0, 0, 0.5);
+    --background: 0 0% 3%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 6%;
+    --card-foreground: 0 0% 98%;
+    --popover: 0 0% 6%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 0 0% 98%;
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 65%;
+    --accent: 0 0% 12%;
+    --accent-foreground: 0 0% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 0 0% 83.9%;
   }
 }
 
@@ -85,77 +55,48 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "rlig" 1, "calt" 1;
+    background: hsl(var(--background));
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
   }
   
-  /* Soft depth эффекты */
-  .soft-shadow {
-    box-shadow: var(--shadow-md);
+  .dark .glass {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.08);
   }
   
-  .soft-shadow-lg {
-    box-shadow: var(--shadow-lg);
+  .glass-strong {
+    background: rgba(255, 255, 255, 0.08);
+    backdrop-filter: blur(30px) saturate(180%);
+    -webkit-backdrop-filter: blur(30px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.15);
   }
   
-  /* Smooth transitions */
-  * {
-    transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
-    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-    transition-duration: 200ms;
+  .dark .glass-strong {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(255, 255, 255, 0.12);
   }
   
-  /* Hover lift effect */
   .hover-lift {
-    transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
   
   .hover-lift:hover {
     transform: translateY(-2px);
-    box-shadow: var(--shadow-lg);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
   }
-
-  /* Улучшенная типографика */
+  
   .text-display {
     font-size: 2.5rem;
     font-weight: 700;
-    line-height: 1.2;
     letter-spacing: -0.02em;
-  }
-
-  /* Микро-интеракции */
-  .animate-pulse {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-  }
-
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
-  }
-
-  /* Прокрутка для чата */
-  .chat-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(0, 0, 0, 0.2) transparent;
-  }
-
-  .chat-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-
-  .chat-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  .chat-scroll::-webkit-scrollbar-thumb {
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 3px;
-  }
-
-  .chat-scroll::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(0, 0, 0, 0.3);
+    line-height: 1.1;
   }
 }

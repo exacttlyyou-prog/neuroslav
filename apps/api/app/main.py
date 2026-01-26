@@ -5,10 +5,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.routers import tasks, meetings, knowledge, notion, chat, daily_checkin, telegram_webhook, notion_webhook
+from app.routers import tasks, meetings, knowledge, notion, chat, daily_checkin, telegram_webhook, notion_webhook, cache, monitoring, reports
 from app.config import get_settings
 from app.db.database import init_db
 from loguru import logger
+from app.core.logging_config import setup_production_logging
 
 settings = get_settings()
 
@@ -27,6 +28,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Middleware для обработки ошибок и rate limiting
+from app.core.middleware import ErrorHandlingMiddleware, RateLimitMiddleware
+app.add_middleware(ErrorHandlingMiddleware)
+app.add_middleware(RateLimitMiddleware, calls_per_minute=120)  # 2 запроса в секунду
+
 # Подключение роутеров
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(meetings.router, prefix="/api/meetings", tags=["meetings"])
@@ -36,11 +42,17 @@ app.include_router(notion_webhook.router, prefix="/api/notion", tags=["notion"])
 app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
 app.include_router(daily_checkin.router, prefix="/api/daily-checkin", tags=["daily-checkin"])
 app.include_router(telegram_webhook.router, prefix="/api/telegram", tags=["telegram"])
+app.include_router(reports.router, prefix="/api/reports", tags=["reports"])
+app.include_router(cache.router, prefix="/api/cache", tags=["cache"])
+app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitoring"])
 
 
 @app.on_event("startup")
 async def startup_event():
     """Инициализация при старте приложения."""
+    # Настраиваем структурированное логирование
+    setup_production_logging()
+    
     await init_db()
     
     # Валидация токенов при старте
@@ -63,6 +75,40 @@ async def startup_event():
                 logger.warning("⚠️ Notion API недоступен, некоторые функции могут не работать")
             else:
                 logger.info("✅ Notion API доступен и токен валиден")
+                
+                # Автоматически создаем необходимые базы данных
+                logger.info("🔄 Проверка и создание необходимых баз данных в Notion...")
+                try:
+                    init_status = await notion.ensure_required_databases()
+                    created_count = sum(1 for v in init_status.values() if v == "created")
+                    existing_count = sum(1 for v in init_status.values() if v == "exists")
+                    
+                    if init_status["errors"]:
+                        logger.warning(f"⚠️ Инициализация баз данных: {len(init_status['errors'])} ошибок")
+                    else:
+                        logger.info(f"✅ Базы данных готовы: {created_count} создано, {existing_count} существовало")
+                        
+                except Exception as e:
+                    logger.warning(f"⚠️ Не удалось автоматически создать базы данных: {e}")
+                
+                # Предзагружаем контекст для оптимизации скорости
+                try:
+                    from app.services.context_loader import ContextLoader
+                    context_loader = ContextLoader()
+                    await context_loader.preload_context()
+                    logger.info("✅ Контекст предзагружен для быстрого доступа")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка предзагрузки контекста: {e}")
+                
+                # Запускаем мониторинг производительности
+                try:
+                    from app.core.monitoring import get_performance_monitor
+                    monitor = get_performance_monitor()
+                    monitor.start_background_collection()
+                    logger.info("✅ Мониторинг производительности запущен")
+                except Exception as e:
+                    logger.warning(f"⚠️ Ошибка запуска мониторинга: {e}")
+                    
         except ValueError as e:
             logger.warning(f"⚠️ Не удалось инициализировать NotionService: {e}")
         except Exception as e:
@@ -73,13 +119,32 @@ async def startup_event():
     # Проверка Telegram токена
     if settings.telegram_bot_token:
         try:
+            logger.info("🔄 Проверка подключения к Telegram Bot API...")
             from app.services.telegram_service import TelegramService
             telegram = TelegramService()
             is_valid = await telegram.validate_token()
             if not is_valid:
                 logger.warning("⚠️ Telegram API недоступен, отправка сообщений не будет работать")
             else:
-                logger.info("✅ Telegram API доступен и токен валиден")
+                logger.info("✅ Telegram бот успешно подключен и готов к работе")
+                
+                # Автоматическая настройка webhook при старте (если указан URL)
+                if settings.telegram_webhook_url:
+                    try:
+                        webhook_url = f"{settings.telegram_webhook_url.rstrip('/')}/api/telegram/webhook"
+                        logger.info(f"🔗 Настраиваю Telegram webhook: {webhook_url}")
+                        result = await telegram.bot.set_webhook(
+                            url=webhook_url,
+                            allowed_updates=["message", "callback_query"]
+                        )
+                        if result:
+                            webhook_info = await telegram.bot.get_webhook_info()
+                            logger.info(f"✅ Telegram webhook настроен: {webhook_info.url}")
+                            logger.info(f"   Ожидает обновления: {webhook_info.pending_update_count}")
+                        else:
+                            logger.warning("⚠️ Не удалось настроить webhook автоматически")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка при автоматической настройке webhook: {e}")
         except (ValueError, ImportError) as e:
             logger.warning(f"⚠️ Не удалось инициализировать TelegramService: {e}")
         except Exception as e:
@@ -97,6 +162,63 @@ async def startup_event():
         logger.info("✅ Фоновый парсер страницы встреч запущен")
     except Exception as e:
         logger.warning(f"⚠️ Не удалось запустить фоновый парсер: {e}")
+    
+    # Запуск ProactiveService для проактивных действий
+    try:
+        from app.services.proactive_service import get_proactive_service
+        proactive_service = get_proactive_service()
+        await proactive_service.start()
+        app.state.proactive_service = proactive_service
+        logger.info("✅ ProactiveService запущен")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось запустить ProactiveService: {e}")
+    
+    # Запуск SchedulerService для планирования задач
+    try:
+        from app.services.scheduler_service import get_scheduler_service
+        from app.services.daily_checkin_service import DailyCheckinService
+        from app.db.database import get_db
+        scheduler_service = get_scheduler_service()
+        await scheduler_service.start()
+        app.state.scheduler_service = scheduler_service
+        logger.info("✅ SchedulerService запущен")
+        
+        # Регистрируем ежедневную задачу на 18:30
+        try:
+            from datetime import datetime, timedelta
+            daily_checkin_service = DailyCheckinService()
+            
+            # Вычисляем время следующего выполнения (сегодня 18:30 или завтра, если уже прошло)
+            now = datetime.now()
+            target_time = now.replace(hour=18, minute=30, second=0, microsecond=0)
+            
+            # Если уже прошло 18:30 сегодня, планируем на завтра
+            if now >= target_time:
+                target_time = target_time + timedelta(days=1)
+            
+            # Регистрируем задачу с ежедневным повторением
+            async def send_daily_checkin_task():
+                """Задача для отправки daily check-in."""
+                try:
+                    from app.db.database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as db:
+                        result = await daily_checkin_service.send_daily_questions(db)
+                        logger.info(f"Daily check-in отправлен: {result}")
+                except Exception as e:
+                    logger.error(f"Ошибка при отправке daily check-in: {e}")
+            
+            scheduler_service.schedule_task(
+                task_id="daily_checkin_1830",
+                execute_at=target_time,
+                action=send_daily_checkin_task,
+                action_args={},
+                repeat_interval=timedelta(days=1)
+            )
+            logger.info(f"✅ Ежедневный опрос запланирован на 18:30 (следующий запуск: {target_time})")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось зарегистрировать daily check-in задачу: {e}")
+    except Exception as e:
+        logger.warning(f"⚠️ Не удалось запустить SchedulerService: {e}")
 
 
 @app.on_event("shutdown")
@@ -104,6 +226,10 @@ async def shutdown_event():
     """Остановка при выключении приложения."""
     if hasattr(app.state, "background_parser"):
         await app.state.background_parser.stop()
+    if hasattr(app.state, "proactive_service"):
+        await app.state.proactive_service.stop()
+    if hasattr(app.state, "scheduler_service"):
+        await app.state.scheduler_service.stop()
 
 
 @app.get("/")

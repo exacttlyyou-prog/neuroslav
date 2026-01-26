@@ -10,7 +10,7 @@ export async function POST(
     const meetingId = params.meetingId
     const body = await request.json()
     
-    const { summary, participants, action_items } = body
+    const { summary, participants, action_items, key_decisions, insights, next_steps } = body
     
     // Формируем FormData для FastAPI
     const formData = new FormData()
@@ -22,6 +22,15 @@ export async function POST(
     }
     if (action_items) {
       formData.append("action_items", JSON.stringify(action_items))
+    }
+    if (key_decisions) {
+      formData.append("key_decisions", JSON.stringify(key_decisions))
+    }
+    if (insights) {
+      formData.append("insights", JSON.stringify(insights))
+    }
+    if (next_steps) {
+      formData.append("next_steps", JSON.stringify(next_steps))
     }
     
     // Проксируем запрос к FastAPI

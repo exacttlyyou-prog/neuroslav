@@ -34,6 +34,9 @@ class Meeting(Base):
     participants = Column(JSON)  # Список участников
     projects = Column(JSON)  # Список проектов
     action_items = Column(JSON)  # Список задач из встречи
+    key_decisions = Column(JSON)  # Список ключевых решений
+    insights = Column(JSON)  # Список инсайтов
+    next_steps = Column(JSON)  # Список следующих шагов
     draft_message = Column(Text)  # Draft follow-up сообщения
     status = Column(String, default="processing")  # processing, pending_approval, completed, sent
     created_at = Column(DateTime, server_default=func.now())
@@ -63,6 +66,8 @@ class Contact(Base):
     email = Column(String)
     aliases = Column(JSON)  # Список алиасов
     notion_page_id = Column(String)  # ID страницы в Notion
+    tov_style = Column(String, default="default")  # Tone of Voice: "formal", "friendly", "brief", "default"
+    is_active = Column(String, default="true")  # Активен ли для daily check-in: "true", "false"
     last_synced = Column(DateTime, server_default=func.now())
 
 

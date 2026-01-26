@@ -10,6 +10,7 @@ from loguru import logger
 from app.workflows.meeting_workflow import MeetingWorkflow
 from app.db.models import Meeting
 from app.db.database import get_db
+from app.services.recording_service import get_recording_service
 
 router = APIRouter()
 
@@ -69,7 +70,8 @@ async def get_meetings(
         Список встреч
     """
     try:
-        query = select(Meeting)
+        from sqlalchemy import desc
+        query = select(Meeting).order_by(desc(Meeting.created_at))
         if status:
             query = query.where(Meeting.status == status)
         
@@ -83,6 +85,9 @@ async def get_meetings(
                 "participants": meeting.participants,
                 "projects": meeting.projects,
                 "action_items": meeting.action_items,
+                "key_decisions": meeting.key_decisions,
+                "insights": meeting.insights,
+                "next_steps": meeting.next_steps,
                 "status": meeting.status,
                 "created_at": meeting.created_at.isoformat() if meeting.created_at else None
             }
@@ -110,6 +115,9 @@ async def get_meeting(meeting_id: str, db: AsyncSession = Depends(get_db)):
             "participants": meeting.participants,
             "projects": meeting.projects,
             "action_items": meeting.action_items,
+            "key_decisions": getattr(meeting, 'key_decisions', None),
+            "insights": getattr(meeting, 'insights', None),
+            "next_steps": getattr(meeting, 'next_steps', None),
             "draft_message": meeting.draft_message,
             "status": meeting.status,
             "created_at": meeting.created_at.isoformat() if meeting.created_at else None
@@ -159,6 +167,9 @@ async def approve_and_send_meeting(
     summary: Optional[str] = Form(None),
     participants: Optional[str] = Form(None),  # JSON строка
     action_items: Optional[str] = Form(None),  # JSON строка
+    key_decisions: Optional[str] = Form(None),  # JSON строка
+    insights: Optional[str] = Form(None),  # JSON строка
+    next_steps: Optional[str] = Form(None),  # JSON строка
     db: AsyncSession = Depends(get_db)
 ):
     """
@@ -189,6 +200,9 @@ async def approve_and_send_meeting(
         final_summary = summary if summary else meeting.summary
         final_participants = json.loads(participants) if participants else (meeting.participants or [])
         final_action_items = json.loads(action_items) if action_items else (meeting.action_items or [])
+        final_key_decisions = json.loads(key_decisions) if key_decisions else (meeting.key_decisions or [])
+        final_insights = json.loads(insights) if insights else (meeting.insights or [])
+        final_next_steps = json.loads(next_steps) if next_steps else (meeting.next_steps or [])
         
         # Отправляем в Telegram
         from app.services.telegram_service import TelegramService
@@ -213,6 +227,12 @@ async def approve_and_send_meeting(
             meeting.participants = final_participants
         if action_items:
             meeting.action_items = final_action_items
+        if key_decisions:
+            meeting.key_decisions = final_key_decisions
+        if insights:
+            meeting.insights = final_insights
+        if next_steps:
+            meeting.next_steps = final_next_steps
         
         # Обновляем статус
         meeting.status = "sent"
@@ -231,4 +251,80 @@ async def approve_and_send_meeting(
         raise
     except Exception as e:
         logger.error(f"Ошибка при отправке встречи после согласования: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/start")
+async def start_recording():
+    """
+    Запускает запись встречи.
+    
+    Returns:
+        Статус запуска записи
+    """
+    try:
+        recording_service = get_recording_service()
+        success = recording_service.start_recording()
+        
+        if success:
+            return {
+                "status": "started",
+                "message": "Запись встречи запущена"
+            }
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Запись уже идет или не удалось запустить"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при запуске записи: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/stop")
+async def stop_recording():
+    """
+    Останавливает запись встречи.
+    
+    Returns:
+        Статус остановки записи
+    """
+    try:
+        recording_service = get_recording_service()
+        success = await recording_service.stop_recording()
+        
+        if success:
+            return {
+                "status": "stopped",
+                "message": "Запись встречи остановлена"
+            }
+        else:
+            raise HTTPException(
+                status_code=409,
+                detail="Запись не запущена"
+            )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при остановке записи: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/status")
+async def get_recording_status():
+    """
+    Получает статус записи встречи.
+    
+    Returns:
+        Статус записи
+    """
+    try:
+        recording_service = get_recording_service()
+        status = recording_service.get_status()
+        
+        return status
+    except Exception as e:
+        logger.error(f"Ошибка при получении статуса записи: {e}")
         raise HTTPException(status_code=500, detail=str(e))

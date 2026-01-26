@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { MeetingProcessingResponse, Participant, Project, ActionItem } from "@/types/meetings"
+import { MeetingProcessingResponse, Participant, Project, ActionItem, KeyDecision } from "@/types/meetings"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import { apiRequest } from "@/lib/api"
@@ -23,6 +23,9 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
   const [participants, setParticipants] = useState<Participant[]>(result?.participants || [])
   const [projects, setProjects] = useState<Project[]>(result?.projects || [])
   const [actionItems, setActionItems] = useState<ActionItem[]>(result?.action_items || [])
+  const [keyDecisions, setKeyDecisions] = useState<KeyDecision[]>(result?.key_decisions || [])
+  const [insights, setInsights] = useState<string[]>(result?.insights || [])
+  const [nextSteps, setNextSteps] = useState<string[]>(result?.next_steps || [])
   const [sending, setSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
@@ -33,6 +36,9 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
       setParticipants(result.participants || [])
       setProjects(result.projects || [])
       setActionItems(result.action_items || [])
+      setKeyDecisions(result.key_decisions || [])
+      setInsights(result.insights || [])
+      setNextSteps(result.next_steps || [])
     }
   }, [result])
 
@@ -58,6 +64,9 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
           summary,
           participants,
           action_items: actionItems,
+          key_decisions: keyDecisions,
+          insights: insights,
+          next_steps: nextSteps,
         }),
       })
 
@@ -99,9 +108,44 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
   }
 
   return (
-    <div className="space-y-6 animate-in fade-in duration-300">
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Разделение экрана: Транскрипция | Саммари + Задачи */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Аудио-плеер (если есть аудио) */}
+        {result.transcript && (
+          <div className="lg:col-span-2">
+            {/* Плеер будет добавлен, когда будет доступен URL аудио */}
+          </div>
+        )}
+        {/* Левая панель: Транскрипция */}
+        <Card className="shadow-md border-2">
+          <CardHeader className="bg-gradient-to-r from-slate-50 to-gray-50 dark:from-slate-950/20 dark:to-gray-950/20">
+            <CardTitle className="text-xl font-bold flex items-center gap-2">
+              <span>📝</span>
+              Транскрипция
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6">
+            <div className="space-y-4">
+              {result.transcript ? (
+                <div className="prose prose-sm max-w-none text-sm">
+                  <pre className="whitespace-pre-wrap font-mono text-xs bg-muted/50 p-4 rounded-lg overflow-auto max-h-[600px]">
+                    {result.transcript}
+                  </pre>
+                </div>
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-8">
+                  Транскрипция недоступна
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Правая панель: Саммари + Задачи */}
+        <div className="space-y-6">
       {/* Саммари */}
-      <Card className="shadow-md border-2">
+      <Card className="shadow-md border-2 animate-in fade-in slide-in-from-left duration-300">
         <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20">
           <CardTitle className="text-xl font-bold flex items-center gap-2">
             <span>📝</span>
@@ -130,7 +174,7 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
       </Card>
 
       {/* Участники */}
-      <Card className="shadow-md border-2">
+      <Card className="shadow-md border-2 animate-in fade-in slide-in-from-right duration-300 delay-75">
         <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20">
           <CardTitle className="text-xl font-bold flex items-center gap-2">
             <span>👥</span>
@@ -221,8 +265,182 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
         </Card>
       )}
 
+      {/* Ключевые решения */}
+      {keyDecisions && keyDecisions.length > 0 && (
+        <Card className="shadow-md border-2 animate-in fade-in slide-in-from-bottom duration-300 delay-100">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-950/20 dark:to-cyan-950/20">
+            <CardTitle className="text-xl font-bold flex items-center gap-2">
+              <span>🎯</span>
+              Ключевые решения
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-4">
+            {keyDecisions.map((decision, idx) => (
+              <div 
+                key={idx} 
+                className="p-4 border-2 rounded-lg space-y-3 hover:border-primary/50 transition-colors bg-card"
+              >
+                <div>
+                  <Label className="text-sm font-semibold mb-2 block">Название решения</Label>
+                  <Input
+                    value={decision.title}
+                    onChange={(e) => {
+                      const updated = [...keyDecisions]
+                      updated[idx] = { ...updated[idx], title: e.target.value }
+                      setKeyDecisions(updated)
+                    }}
+                    placeholder="Название решения..."
+                    className="border-2 focus:border-primary transition-colors"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm font-semibold mb-2 block">Описание</Label>
+                  <Textarea
+                    value={decision.description}
+                    onChange={(e) => {
+                      const updated = [...keyDecisions]
+                      updated[idx] = { ...updated[idx], description: e.target.value }
+                      setKeyDecisions(updated)
+                    }}
+                    placeholder="Описание решения..."
+                    rows={3}
+                    className="border-2 focus:border-primary transition-colors"
+                  />
+                </div>
+                {decision.impact && (
+                  <div>
+                    <Label className="text-sm font-semibold mb-2 block">Влияние</Label>
+                    <Input
+                      value={decision.impact}
+                      onChange={(e) => {
+                        const updated = [...keyDecisions]
+                        updated[idx] = { ...updated[idx], impact: e.target.value }
+                        setKeyDecisions(updated)
+                      }}
+                      placeholder="Влияние на проект/команду..."
+                      className="border-2 focus:border-primary transition-colors"
+                    />
+                  </div>
+                )}
+                <div className="flex justify-end">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setKeyDecisions(keyDecisions.filter((_, i) => i !== idx))}
+                    className="text-destructive hover:bg-destructive/10"
+                  >
+                    <XCircle className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <Button 
+              variant="outline" 
+              onClick={() => setKeyDecisions([...keyDecisions, { title: "", description: "", impact: "" }])} 
+              className="w-full border-2 border-dashed hover:border-solid transition-all"
+            >
+              + Добавить решение
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Инсайты */}
+      {insights && insights.length > 0 && (
+        <Card className="shadow-md border-2 animate-in fade-in slide-in-from-bottom duration-300 delay-150">
+          <CardHeader className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-950/20 dark:to-purple-950/20">
+            <CardTitle className="text-xl font-bold flex items-center gap-2">
+              <span>💡</span>
+              Инсайты
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-3">
+            {insights.map((insight, idx) => (
+              <div 
+                key={idx} 
+                className="flex items-center gap-3 p-4 border-2 rounded-lg hover:border-primary/50 transition-colors bg-card"
+              >
+                <Textarea
+                  value={insight}
+                  onChange={(e) => {
+                    const updated = [...insights]
+                    updated[idx] = e.target.value
+                    setInsights(updated)
+                  }}
+                  placeholder="Инсайт..."
+                  rows={2}
+                  className="flex-1 border-2 focus:border-primary transition-colors"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setInsights(insights.filter((_, i) => i !== idx))}
+                  className="text-destructive hover:bg-destructive/10"
+                >
+                  <XCircle className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+            <Button 
+              variant="outline" 
+              onClick={() => setInsights([...insights, ""])} 
+              className="w-full border-2 border-dashed hover:border-solid transition-all"
+            >
+              + Добавить инсайт
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Следующие шаги */}
+      {nextSteps && nextSteps.length > 0 && (
+        <Card className="shadow-md border-2 animate-in fade-in slide-in-from-bottom duration-300 delay-200">
+          <CardHeader className="bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-950/20 dark:to-cyan-950/20">
+            <CardTitle className="text-xl font-bold flex items-center gap-2">
+              <span>🚀</span>
+              Следующие шаги
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-6 space-y-3">
+            {nextSteps.map((step, idx) => (
+              <div 
+                key={idx} 
+                className="flex items-center gap-3 p-4 border-2 rounded-lg hover:border-primary/50 transition-colors bg-card"
+              >
+                <Textarea
+                  value={step}
+                  onChange={(e) => {
+                    const updated = [...nextSteps]
+                    updated[idx] = e.target.value
+                    setNextSteps(updated)
+                  }}
+                  placeholder="Следующий шаг..."
+                  rows={2}
+                  className="flex-1 border-2 focus:border-primary transition-colors"
+                />
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setNextSteps(nextSteps.filter((_, i) => i !== idx))}
+                  className="text-destructive hover:bg-destructive/10"
+                >
+                  <XCircle className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+            <Button 
+              variant="outline" 
+              onClick={() => setNextSteps([...nextSteps, ""])} 
+              className="w-full border-2 border-dashed hover:border-solid transition-all"
+            >
+              + Добавить шаг
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Задачи */}
-      <Card className="shadow-md border-2">
+      <Card className="shadow-md border-2 animate-in fade-in slide-in-from-bottom duration-300 delay-250">
         <CardHeader className="bg-gradient-to-r from-yellow-50 to-amber-50 dark:from-yellow-950/20 dark:to-amber-950/20">
           <CardTitle className="text-xl font-bold flex items-center gap-2">
             <span>✅</span>
@@ -364,6 +582,8 @@ export function MeetingResults({ result, onApproved }: MeetingResultsProps) {
           </div>
         </CardContent>
       </Card>
+        </div>
+      </div>
     </div>
   )
 }

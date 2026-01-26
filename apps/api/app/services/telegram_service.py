@@ -1,7 +1,7 @@
 """
 Сервис для работы с Telegram Bot API.
 """
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Any
 
 try:
     from telegram import Bot
@@ -90,15 +90,26 @@ def sanitize_html_for_telegram(html_text: str) -> str:
     # Удаляем все остальные HTML теги, кроме поддерживаемых Telegram
     # Поддерживаемые: <b>, <i>, <u>, <s>, <a>, <code>, <pre>, <blockquote>
     allowed_tags = ['b', 'i', 'u', 's', 'a', 'code', 'pre', 'blockquote']
-    # Удаляем все теги, которые не в списке разрешенных
-    def remove_unallowed_tags(match):
-        tag = match.group(1).lower()
-        if tag not in allowed_tags:
-            return ''
-        return match.group(0)
     
-    # Удаляем все закрывающие теги, которые не в списке разрешенных
-    text = re.sub(r'</([^>]+)>', lambda m: '</' + m.group(1) + '>' if m.group(1).lower() in allowed_tags else '', text, flags=re.IGNORECASE)
+    # Рекурсивно удаляем неподдерживаемые теги, сохраняя содержимое
+    def clean_unsupported_tags(text_content):
+        # Находим первый тег
+        match = re.search(r'<(/?)(\w+)[^>]*>', text_content)
+        if not match:
+            return text_content
+            
+        tag_name = match.group(2).lower()
+        is_closing = match.group(1) == '/'
+        
+        if tag_name in allowed_tags:
+            # Если тег разрешен, оставляем его и ищем дальше после него
+            return text_content[:match.end()] + clean_unsupported_tags(text_content[match.end():])
+        else:
+            # Если тег запрещен, удаляем его и ищем дальше
+            return text_content[:match.start()] + clean_unsupported_tags(text_content[match.end():])
+
+    # Применяем очистку
+    text = clean_unsupported_tags(text)
     
     # Очищаем множественные переносы строк
     text = re.sub(r'\n{3,}', '\n\n', text)
@@ -151,8 +162,8 @@ class TelegramService:
             return False
     
     @retry(
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=10),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=1, max=3),
         retry=retry_if_exception_type((Exception,)),
         reraise=True
     )
@@ -332,7 +343,13 @@ class TelegramService:
         action_items: Optional[List] = None,
         participants: Optional[List] = None,
         send_to_admin: bool = True,
-        send_to_participants: bool = True
+        send_to_participants: bool = True,
+        tags: Optional[List[str]] = None,
+        meeting_date: Optional[str] = None,
+        ai_context_link: Optional[str] = None,
+        key_decisions: Optional[List[Dict[str, Any]]] = None,
+        insights: Optional[List[str]] = None,
+        next_steps: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Отправляет минутки встречи в Telegram с тегами участников.
@@ -357,16 +374,20 @@ class TelegramService:
         message = f"<b>📋 Минутки встречи</b>\n\n"
         
         if participants:
-            # Формируем список участников с тегами
+            # Формируем список участников с тегами (формат: Name @username)
             participants_list = []
             for p in participants:
                 if isinstance(p, dict):
                     name = p.get('name', '')
                     username = p.get('telegram_username', '')
                     if username:
-                        participants_list.append(f"@{username}")
+                        # Формат: "Имя @username" или просто "@username" если имени нет
+                        if name:
+                            participants_list.append(f"{name} @{username}")
+                        else:
+                            participants_list.append(f"@{username}")
                     else:
-                        participants_list.append(name)
+                        participants_list.append(name if name else "Неизвестно")
                 else:
                     participants_list.append(str(p))
             
@@ -475,6 +496,29 @@ class TelegramService:
                 
                 result["participants"].append(participant_result)
         
+        # Сохраняем минутку в Notion после отправки в Telegram
+        try:
+            logger.info("💾 Начинаю сохранение минутки в Notion...")
+            from app.services.notion_service import NotionService
+            notion = NotionService()
+            minutes_id = await notion.save_meeting_minutes(
+                summary=summary,
+                action_items=action_items or [],
+                participants=participants or [],
+                tags=tags or [],
+                meeting_date=meeting_date,
+                ai_context_link=ai_context_link,
+                key_decisions=key_decisions or [],
+                insights=insights or [],
+                next_steps=next_steps or []
+            )
+            logger.info(f"✅ Минутка сохранена в Notion (ID блока: {minutes_id})")
+        except Exception as e:
+            logger.error(f"❌ Ошибка при сохранении минутки в Notion: {e}", exc_info=True)
+            # Не прерываем выполнение, если сохранение в Notion не удалось, но логируем детали
+            # Пробрасываем исключение, чтобы вызывающий код мог обработать (например, попробовать сохранить напрямую)
+            raise
+        
         return result
     
     async def send_message_to_user(
@@ -482,7 +526,7 @@ class TelegramService:
         chat_id: str,
         message: str,
         parse_mode: Optional[str] = None
-    ) -> int:
+    ) -> Dict[str, Any]:
         """
         Отправляет сообщение конкретному пользователю по chat_id.
         
@@ -492,8 +536,9 @@ class TelegramService:
             parse_mode: Режим парсинга (HTML, Markdown или None)
             
         Returns:
-            ID отправленного сообщения
+            Словарь с информацией об отправленном сообщении
         """
+        logger.info(f"📤 Попытка отправки сообщения в Telegram: chat_id={chat_id}, parse_mode={parse_mode}")
         try:
             if parse_mode == "HTML":
                 message = sanitize_html_for_telegram(message)
@@ -504,8 +549,49 @@ class TelegramService:
                 parse_mode=parse_mode
             )
             
-            logger.info(f"Сообщение отправлено пользователю {chat_id}: {result.message_id}")
-            return result.message_id
+            logger.info(f"✅ Сообщение успешно отправлено в Telegram: message_id={result.message_id}")
+            return {
+                "message_id": result.message_id,
+                "chat_id": chat_id,
+                "success": True
+            }
         except Exception as e:
-            logger.error(f"Ошибка при отправке сообщения пользователю {chat_id}: {e}")
+            logger.error(f"❌ Ошибка при отправке сообщения в Telegram (chat_id: {chat_id}): {e}")
             raise
+    
+    async def edit_message(
+        self,
+        chat_id: str,
+        message_id: int,
+        new_text: str,
+        parse_mode: Optional[str] = None
+    ) -> bool:
+        """
+        Редактирует существующее сообщение в Telegram.
+        
+        Args:
+            chat_id: Chat ID пользователя
+            message_id: ID сообщения для редактирования
+            new_text: Новый текст сообщения
+            parse_mode: Режим парсинга (HTML, Markdown или None)
+            
+        Returns:
+            True если сообщение успешно отредактировано
+        """
+        logger.debug(f"📝 Попытка редактирования сообщения: chat_id={chat_id}, message_id={message_id}")
+        try:
+            if parse_mode == "HTML":
+                new_text = sanitize_html_for_telegram(new_text)
+            
+            await self.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=new_text,
+                parse_mode=parse_mode
+            )
+            
+            logger.debug(f"✅ Сообщение успешно отредактировано в Telegram")
+            return True
+        except Exception as e:
+            logger.debug(f"⚠️ Не удалось отредактировать сообщение: {e}")
+            return False

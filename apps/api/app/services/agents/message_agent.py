@@ -22,7 +22,8 @@ class MessageAgent(BaseAgent):
         self,
         user_input: str,
         classification: IntentClassification,
-        context: List[str]
+        context: List[str],
+        sender_username: str = None
     ) -> Dict[str, Any]:
         """
         Обрабатывает отложенное сообщение.
@@ -35,11 +36,67 @@ class MessageAgent(BaseAgent):
             send_time = extracted_data.get("send_time", "не указано")
             message_text = extracted_data.get("message", user_input)
             
-            # TODO: Реализовать сохранение отложенного сообщения в БД
-            # Пока просто возвращаем подтверждение
+            # Сохраняем отложенное сообщение через SchedulerService
+            try:
+                from app.services.scheduler_service import get_scheduler_service
+                from app.services.date_parser_service import get_date_parser_service
+                from datetime import datetime, timedelta
+                
+                scheduler = get_scheduler_service()
+                date_parser = get_date_parser_service()
+                
+                # Парсим время отправки с помощью улучшенного парсера
+                send_datetime = None
+                if send_time and send_time != "не указано":
+                    send_datetime = date_parser.parse_datetime(send_time)
+                
+                if not send_datetime:
+                    send_datetime = datetime.now() + timedelta(hours=1)  # По умолчанию через час
+                
+                # Планируем отправку сообщения
+                task_id = f"message-{recipient}-{send_datetime.isoformat()}"
+                
+                async def send_scheduled_message():
+                    from app.services.telegram_service import TelegramService
+                    telegram = TelegramService()
+                    await telegram.send_message_to_user(
+                        chat_id=recipient,
+                        message=message_text
+                    )
+                
+                scheduler.schedule_task(
+                    task_id=task_id,
+                    execute_at=send_datetime,
+                    action=send_scheduled_message,
+                    action_args={}
+                )
+                
+                logger.info(f"Сообщение запланировано на {send_datetime}")
+                
+            except Exception as e:
+                logger.warning(f"Не удалось запланировать сообщение через SchedulerService: {e}")
+                # Продолжаем выполнение даже при ошибке планирования
+            
+            # Формируем ответ через персону
+            context_info = f"""
+            Отложенное сообщение запланировано.
+            Получатель: {recipient}
+            Время: {send_time}
+            Текст: {message_text[:100]}...
+            """
+            
+            # Используем уже инициализированный OllamaService из BaseAgent
+            response_text = await self.ollama.generate_persona_response(
+                user_input=f"Запланируй сообщение: {user_input}",
+                context=context_info
+            )
+            
+            # Добавляем эмодзи если их нет, для соответствия стилю
+            if "🤖" not in response_text and "✅" not in response_text:
+                response_text = f"✅ {response_text}"
             
             return {
-                "response": f"✅ Отложенное сообщение запланировано\n\nПолучатель: {recipient}\nВремя: {send_time}\nСообщение: {message_text[:100]}...",
+                "response": response_text,
                 "actions": [
                     {
                         "type": "message_scheduled",

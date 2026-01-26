@@ -14,7 +14,7 @@ class DefaultAgent(BaseAgent):
     
     def __init__(self):
         super().__init__()
-        self.ollama = OllamaService(context_loader=self.context_loader)
+        # self.ollama уже инициализирован в BaseAgent, не нужно дублировать
     
     def get_agent_type(self) -> str:
         return "default"
@@ -23,21 +23,18 @@ class DefaultAgent(BaseAgent):
         self,
         user_input: str,
         classification: IntentClassification,
-        context: List[str]
+        context: List[str],
+        sender_username: str = None
     ) -> Dict[str, Any]:
         """
         Обрабатывает общий запрос или вопрос.
         """
         try:
-            # Используем LLM для генерации ответа
-            prompt = f"""Ты — Нейрослав, цифровой двойник Вячеслава.
-Отвечай кратко и по делу. Если вопрос не относится к задачам, встречам или знаниям, дай краткий ответ.
-
-Вопрос: {user_input}
-
-Ответ:"""
-            
-            response_text = await self.ollama.summarize_text(prompt, max_length=300)
+            # Используем LLM для генерации ответа в стиле персоны
+            response_text = await self.ollama.generate_persona_response(
+                user_input=user_input,
+                context=""
+            )
             
             return {
                 "response": response_text,

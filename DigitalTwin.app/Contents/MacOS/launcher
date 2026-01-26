@@ -1,0 +1,22 @@
+#!/bin/bash
+# Абсолютный путь к папке проекта
+PROJECT_DIR="/Users/slava/Desktop/коллеги, обсудили"
+
+# Проверяем, существует ли launch.sh
+if [ ! -f "$PROJECT_DIR/launch.sh" ]; then
+    osascript <<APPLESCRIPT
+tell application "Terminal"
+    activate
+    do script "echo '❌ Ошибка: не найден launch.sh в $PROJECT_DIR'"
+end tell
+APPLESCRIPT
+    exit 1
+fi
+
+# Запускаем launch.sh в новом окне терминала
+osascript <<APPLESCRIPT
+tell application "Terminal"
+    activate
+    do script "cd '$PROJECT_DIR' && ./launch.sh"
+end tell
+APPLESCRIPT

@@ -43,6 +43,8 @@ class TaskWorkflow:
             intent = extracted.get("intent", task_text)
             deadline_str = extracted.get("deadline")
             priority = extracted.get("priority", "Medium")
+            assignee = extracted.get("assignee")
+            project = extracted.get("project")
             
             # Шаг 2: Парсинг относительных дат
             deadline = None
@@ -65,17 +67,23 @@ class TaskWorkflow:
                 await session.commit()
                 await session.refresh(task)
             
-            logger.info(f"Задача сохранена: {task_id}")
+            logger.info(f"Задача сохранена: {task_id} (assignee: {assignee}, project: {project})")
             
             # Шаг 4: Создание задачи в Notion (если нужно)
             notion_task_id = None
             if create_in_notion:
                 try:
-                    notion_task_id = await self.notion.create_task_in_notion({
+                    task_data = {
                         "text": intent,
                         "deadline": deadline.isoformat() if deadline else None,
                         "priority": priority
-                    })
+                    }
+                    if assignee:
+                        task_data["assignee"] = assignee
+                    if project:
+                        task_data["project"] = project
+                    
+                    notion_task_id = await self.notion.create_task_in_notion(task_data)
                     logger.info(f"Задача создана в Notion: {notion_task_id}")
                 except Exception as e:
                     logger.error(f"Ошибка при создании задачи в Notion: {e}")
@@ -90,6 +98,8 @@ class TaskWorkflow:
                 "intent": intent,
                 "deadline": deadline.isoformat() if deadline else None,
                 "priority": priority,
+                "assignee": assignee,
+                "project": project,
                 "notion_task_id": notion_task_id,
                 "message": "Задача успешно обработана"
             }

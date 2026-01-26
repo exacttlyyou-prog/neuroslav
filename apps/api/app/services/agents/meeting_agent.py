@@ -23,7 +23,8 @@ class MeetingAgent(BaseAgent):
         self,
         user_input: str,
         classification: IntentClassification,
-        context: List[str]
+        context: List[str],
+        sender_username: str = None
     ) -> Dict[str, Any]:
         """
         Обрабатывает встречу с контекстом из RAG.
@@ -31,49 +32,61 @@ class MeetingAgent(BaseAgent):
         try:
             # Проверяем, есть ли специальная команда "обработать последнюю встречу"
             if "последн" in user_input.lower() or "last" in user_input.lower():
-                # Используем автоматическую обработку через Playwright
-                from app.services.notion_playwright_service import NotionPlaywrightService
-                playwright = NotionPlaywrightService()
-                result = await playwright.get_last_meeting_via_browser()
+                # Ищем последнюю встречу в Notion через API (без браузера)
+                from app.services.notion_service import NotionService
+                notion = NotionService()
                 
-                if result.get("content"):
-                    # Обрабатываем полученную встречу с контекстом из RAG
-                    # Контекст уже получен в BaseAgent и передан в _process_with_context
+                logger.info("🔍 Поиск последней встречи в Notion...")
+                last_page = await notion.get_last_created_page()
+                
+                transcript = ""
+                notion_page_id = None
+                
+                if last_page:
+                    transcript = last_page.get("content", "")
+                    notion_page_id = last_page.get("id")
+                    logger.info(f"✅ Найдена последняя встреча в Notion: {last_page.get('title')}")
+                else:
+                    logger.warning("⚠️ Не найдена последняя встреча в Notion")
+                    return {
+                        "response": "Не удалось найти последнюю встречу в Notion. Убедитесь, что запись была завершена и сохранена.",
+                        "actions": [],
+                        "metadata": {},
+                        "should_save_to_rag": False
+                    }
+                
+                if transcript:
+                    # Обрабатываем полученную встречу с контекстом из RAG и передачей username
                     workflow_result = await self.meeting_workflow.process_meeting(
-                        transcript=result.get("content", ""),
-                        notion_page_id=None
+                        transcript=transcript,
+                        notion_page_id=notion_page_id,
+                        sender_username=sender_username
                     )
                     # Контекст из RAG используется внутри MeetingWorkflow через RAG.search_similar_meetings
                     
-                    # Формируем ответ с информацией о встрече
+                    # Формируем ответ через персону
                     meeting_id = workflow_result.get("meeting_id")
                     summary = workflow_result.get("summary", "")
                     telegram_sent = workflow_result.get("telegram_sent")
                     
-                    response_parts = [
-                        f"✅ Встреча обработана\n\n",
-                        f"{summary[:500]}{'...' if len(summary) > 500 else ''}\n\n"
-                    ]
+                    context_info = f"""
+                    Встреча обработана.
+                    ID: {meeting_id}
+                    Саммари: {summary[:200]}...
+                    Отправлено в Telegram: {'Да' if telegram_sent and (telegram_sent.get("ok_message_id") or telegram_sent.get("admin_message_id")) else 'Нет'}
+                    """
                     
-                    # Проверяем, было ли отправлено в Telegram
-                    if telegram_sent:
-                        ok_msg = telegram_sent.get("ok_message_id")
-                        admin_msg = telegram_sent.get("admin_message_id")
-                        if ok_msg or admin_msg:
-                            response_parts.append("📤 Саммари отправлено в Telegram\n")
-                        else:
-                            response_parts.append("⚠️ Не удалось отправить в Telegram автоматически\n")
-                    else:
-                        response_parts.append("⚠️ Саммари не отправлено в Telegram\n")
+                    response_text = await self.ollama.generate_persona_response(
+                        user_input=f"Обработай последнюю встречу: {user_input}",
+                        context=context_info
+                    )
                     
-                    # Добавляем предложение отправить вручную, если не отправилось
+                    # Добавляем технические детали если нужно
                     if not telegram_sent or (not telegram_sent.get("ok_message_id") and not telegram_sent.get("admin_message_id")):
-                        response_parts.append(f"\n💡 Чтобы отправить вручную, используйте:\n")
-                        response_parts.append(f"`POST /api/meetings/{meeting_id}/send`\n")
-                        response_parts.append(f"или команду в чате: `Отправь встречу {meeting_id}`")
+                         response_text += f"\n\n(Техническое: отправь вручную через `POST /api/meetings/{meeting_id}/send`)"
                     
                     return {
-                        "response": "".join(response_parts),
+                        "response": response_text,
                         "actions": [
                             {
                                 "type": "meeting_processed",
@@ -85,6 +98,7 @@ class MeetingAgent(BaseAgent):
                         "metadata": {
                             "meeting_id": meeting_id,
                             "participants": workflow_result.get("participants", []),
+                            "action_items": workflow_result.get("action_items", []),
                             "action_items_count": len(workflow_result.get("action_items", [])),
                             "telegram_sent": telegram_sent
                         },
@@ -97,35 +111,29 @@ class MeetingAgent(BaseAgent):
                 transcript=user_input
             )
             
-            # Формируем ответ с информацией о встрече
+            # Формируем ответ через персону
             meeting_id = workflow_result.get("meeting_id")
             summary = workflow_result.get("summary", "")
             telegram_sent = workflow_result.get("telegram_sent")
             
-            response_parts = [
-                f"✅ Встреча обработана\n\n",
-                f"{summary[:500]}{'...' if len(summary) > 500 else ''}\n\n"
-            ]
+            context_info = f"""
+            Встреча обработана (из текста).
+            ID: {meeting_id}
+            Саммари: {summary[:200]}...
+            Отправлено в Telegram: {'Да' if telegram_sent and (telegram_sent.get("ok_message_id") or telegram_sent.get("admin_message_id")) else 'Нет'}
+            """
             
-            # Проверяем, было ли отправлено в Telegram
-            if telegram_sent:
-                ok_msg = telegram_sent.get("ok_message_id")
-                admin_msg = telegram_sent.get("admin_message_id")
-                if ok_msg or admin_msg:
-                    response_parts.append("📤 Саммари отправлено в Telegram\n")
-                else:
-                    response_parts.append("⚠️ Не удалось отправить в Telegram автоматически\n")
-            else:
-                response_parts.append("⚠️ Саммари не отправлено в Telegram\n")
+            response_text = await self.ollama.generate_persona_response(
+                user_input=f"Обработай встречу из текста: {user_input[:50]}...",
+                context=context_info
+            )
             
-            # Добавляем предложение отправить вручную, если не отправилось
+            # Добавляем технические детали если нужно
             if not telegram_sent or (not telegram_sent.get("ok_message_id") and not telegram_sent.get("admin_message_id")):
-                response_parts.append(f"\n💡 Чтобы отправить вручную, используйте:\n")
-                response_parts.append(f"`POST /api/meetings/{meeting_id}/send`\n")
-                response_parts.append(f"или команду в чате: `Отправь встречу {meeting_id}`")
+                 response_text += f"\n\n(Техническое: отправь вручную через `POST /api/meetings/{meeting_id}/send`)"
             
             return {
-                "response": "".join(response_parts),
+                "response": response_text,
                 "actions": [
                     {
                         "type": "meeting_processed",
@@ -136,6 +144,7 @@ class MeetingAgent(BaseAgent):
                 "metadata": {
                     "meeting_id": meeting_id,
                     "participants": workflow_result.get("participants", []),
+                    "action_items": workflow_result.get("action_items", []),
                     "action_items_count": len(workflow_result.get("action_items", [])),
                     "telegram_sent": telegram_sent
                 },
@@ -150,6 +159,18 @@ class MeetingAgent(BaseAgent):
                 "metadata": {"error": str(e)},
                 "should_save_to_rag": False
             }
+    
+    def get_next_agents(self, result: Dict[str, Any]) -> List[str]:
+        """
+        Определяет, какие агенты должны работать после обработки встречи.
+        
+        После обработки встречи автоматически создаем задачи из action_items.
+        """
+        action_items = result.get("metadata", {}).get("action_items", [])
+        if action_items and len(action_items) > 0:
+            # Если есть задачи, запускаем TaskAgent для их создания
+            return ["task"]
+        return []
     
     async def _save_to_rag(self, user_input: str, result: Dict[str, Any]) -> None:
         """Сохраняет встречу в RAG."""

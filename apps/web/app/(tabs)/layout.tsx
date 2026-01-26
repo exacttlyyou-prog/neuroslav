@@ -12,7 +12,7 @@ export default function TabsLayout({
   const pathname = usePathname()
   const router = useRouter()
 
-  const currentTab = pathname?.split('/').pop() || 'tasks'
+  const currentTab = pathname?.split('/').pop() || 'dashboard'
 
   const handleTabChange = (value: string) => {
     router.push(`/${value}`)
@@ -26,12 +26,13 @@ export default function TabsLayout({
           <p className="text-muted-foreground text-lg">Персональный движок обработки</p>
         </div>
         <Tabs value={currentTab} onValueChange={handleTabChange} className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-8 rounded-lg">
-          <TabsTrigger value="chat">Чат</TabsTrigger>
-          <TabsTrigger value="tasks">Задачи</TabsTrigger>
-          <TabsTrigger value="meetings">Встречи</TabsTrigger>
-          <TabsTrigger value="context">Знания</TabsTrigger>
-          <TabsTrigger value="daily-checkin">Опросы</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-3 lg:grid-cols-6 mb-8 rounded-lg">
+          <TabsTrigger value="dashboard" className="text-xs lg:text-sm">Дашборд</TabsTrigger>
+          <TabsTrigger value="chat" className="text-xs lg:text-sm">Чат</TabsTrigger>
+          <TabsTrigger value="tasks" className="text-xs lg:text-sm">Задачи</TabsTrigger>
+          <TabsTrigger value="meetings" className="text-xs lg:text-sm">Встречи</TabsTrigger>
+          <TabsTrigger value="context" className="text-xs lg:text-sm">Знания</TabsTrigger>
+          <TabsTrigger value="daily-checkin" className="text-xs lg:text-sm">Опросы</TabsTrigger>
         </TabsList>
           <div>
             {children}

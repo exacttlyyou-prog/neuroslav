@@ -39,6 +39,46 @@ class ContextLoader:
         self._load_from_json()
         # Строим обратный индекс после загрузки JSON
         self._build_lookup_maps()
+        
+        # Флаги для отслеживания синхронизации с Notion
+        self._notion_synced = False
+        self._preload_started = False
+    
+    async def ensure_notion_sync(self):
+        """Обеспечивает синхронизацию с Notion при первом обращении."""
+        if not self._notion_synced:
+            try:
+                await self.sync_context_from_notion()
+                logger.info("✅ Автоматическая синхронизация с Notion завершена")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось синхронизироваться с Notion: {e}")
+                logger.info("Используем данные из JSON файлов как fallback")
+    
+    async def preload_context(self):
+        """
+        Предзагружает контекст в фоновом режиме для оптимизации скорости.
+        Вызывается при старте приложения.
+        """
+        if self._preload_started:
+            return
+            
+        self._preload_started = True
+        logger.info("🔄 Начинаем предзагрузку контекста...")
+        
+        try:
+            # Асинхронно синхронизируемся с Notion
+            await self.ensure_notion_sync()
+            
+            # Предварительно строим поисковые индексы
+            self._build_lookup_maps()
+            
+            logger.info(f"✅ Предзагрузка контекста завершена: {len(self.people)} людей, {len(self.projects)} проектов")
+            
+        except Exception as e:
+            logger.error(f"❌ Ошибка предзагрузки контекста: {e}")
+            # Fallback на JSON данные если что-то пошло не так
+            self._load_from_json()
+            self._build_lookup_maps()
     
     def _load_from_json(self):
         """Загрузить контекст из JSON файлов (fallback)."""
@@ -145,32 +185,76 @@ class ContextLoader:
         
         logger.info("Синхронизация контекста из Notion...")
         
-        # Загружаем контакты
+        # ПОЛНАЯ ЗАМЕНА данных из Notion (не дополнение к JSON)
+        # Очищаем старые данные для обеспечения актуальности
+        self.people = {}
+        self.projects = []
+        self.glossary = {}
+        
+        # Загружаем контакты из Notion
         contacts = await self.notion_service.get_contacts_from_db()
+        notion_people_count = 0
         for contact in contacts:
             username = contact.get('telegram_username', '').lower()
+            name = contact.get('name', '')
+            
+            # Добавляем по username если есть
             if username:
                 self.people[username] = {
                     'id': contact.get('id'),  # Notion page ID для поиска в БД
-                    'name': contact.get('name', ''),
+                    'name': name,
                     'role': contact.get('role', ''),
                     'context': contact.get('context', ''),
                     'telegram_username': contact.get('telegram_username', ''),
-                    'aliases': contact.get('aliases', [])
+                    'aliases': contact.get('aliases', []),
+                    'source': 'notion'  # Помечаем источник
                 }
+                notion_people_count += 1
+            
+            # ДОПОЛНИТЕЛЬНО: Добавляем по имени для лучшего поиска
+            if name and name.lower() not in self.people:
+                self.people[name.lower()] = {
+                    'id': contact.get('id'),
+                    'name': name,
+                    'role': contact.get('role', ''),
+                    'context': contact.get('context', ''),
+                    'telegram_username': contact.get('telegram_username', ''),
+                    'aliases': contact.get('aliases', []),
+                    'source': 'notion'
+                }
+                notion_people_count += 1
         
-        # Загружаем проекты
+        # Если не получили данные из Notion, используем JSON как fallback
+        if notion_people_count == 0:
+            logger.warning("⚠️ Не получены данные о людях из Notion, используем JSON fallback")
+            self._load_people_json()
+        else:
+            logger.info(f"✅ Загружено {notion_people_count} записей о людях из Notion")
+        
+        # Загружаем проекты из Notion
         projects = await self.notion_service.get_projects_from_db()
-        self.projects = projects
+        if projects:
+            self.projects = projects
+            for project in self.projects:
+                project['source'] = 'notion'  # Помечаем источник
+            logger.info(f"✅ Загружено {len(projects)} проектов из Notion")
+        else:
+            logger.warning("⚠️ Не получены данные о проектах из Notion, используем JSON fallback")
+            self._load_projects_json()
         
-        # Загружаем глоссарий
+        # Загружаем глоссарий из Notion
         glossary = await self.notion_service.get_glossary_from_db()
-        self.glossary = glossary
+        if glossary:
+            self.glossary = glossary
+            logger.info(f"✅ Загружено {len(glossary)} терминов из Notion глоссария")
+        else:
+            logger.warning("⚠️ Глоссарий из Notion недоступен, используем пустой")
         
         logger.info(f"Синхронизация завершена: {len(self.people)} людей, {len(self.projects)} проектов, {len(self.glossary)} терминов")
         
         # Перестраиваем индексы после синхронизации
         self._build_lookup_maps()
+        self._notion_synced = True
     
     def get_person_context(self, username: str) -> Optional[str]:
         """
@@ -222,9 +306,10 @@ class ContextLoader:
         matches.sort(key=lambda x: x[1], reverse=True)
         return matches
     
-    def resolve_entity(self, text: str, use_fuzzy: bool = True, fuzzy_threshold: float = 0.6) -> Dict[str, List[Dict[str, Any]]]:
+    async def resolve_entity(self, text: str, use_fuzzy: bool = True, fuzzy_threshold: float = 0.6) -> Dict[str, List[Dict[str, Any]]]:
         """
         Умный поиск людей и проектов в тексте с поддержкой fuzzy matching.
+        Автоматически синхронизируется с Notion при первом вызове.
         
         Args:
             text: Текст для анализа
@@ -234,6 +319,8 @@ class ContextLoader:
         Returns:
             Словарь с ключами 'people' и 'projects'
         """
+        # Автоматическая синхронизация с Notion при первом использовании
+        await self.ensure_notion_sync()
         found_people = []
         found_projects = []
         
@@ -325,3 +412,35 @@ class ContextLoader:
                 found_terms[term] = definition
         
         return found_terms
+    
+    def _load_people_json(self):
+        """Загружает людей из JSON файла как fallback."""
+        try:
+            people_path = os.path.join(os.path.dirname(__file__), "..", "data", "people.json")
+            with open(people_path, 'r', encoding='utf-8') as f:
+                people_data = json.load(f)
+            
+            for username, person_info in people_data.items():
+                self.people[username.lower()] = person_info
+                person_info['source'] = 'json'  # Помечаем источник
+                
+            logger.info(f"✅ Загружено {len(people_data)} записей о людях из JSON (fallback)")
+        except FileNotFoundError:
+            logger.warning("Файл people.json не найден")
+            self.people = {}
+    
+    def _load_projects_json(self):
+        """Загружает проекты из JSON файла как fallback."""
+        try:
+            projects_path = os.path.join(os.path.dirname(__file__), "..", "data", "projects.json")
+            with open(projects_path, 'r', encoding='utf-8') as f:
+                projects_data = json.load(f)
+            
+            self.projects = projects_data.get('projects', [])
+            for project in self.projects:
+                project['source'] = 'json'  # Помечаем источник
+                
+            logger.info(f"✅ Загружено {len(self.projects)} проектов из JSON (fallback)")
+        except FileNotFoundError:
+            logger.warning("Файл projects.json не найден")
+            self.projects = []

@@ -7,6 +7,7 @@ from chromadb.config import Settings as ChromaSettings
 from loguru import logger
 from typing import List, Dict, Any, Optional
 from pathlib import Path
+from datetime import datetime
 
 from app.config import get_settings
 
@@ -15,6 +16,7 @@ class RAGService:
     """Локальный RAG сервис на базе ChromaDB."""
     
     def __init__(self):
+        from app.config import get_settings
         settings = get_settings()
         
         # Инициализация ChromaDB
@@ -240,3 +242,162 @@ class RAGService:
         except Exception as e:
             logger.error(f"Ошибка при поиске похожих задач: {e}")
             return []
+    
+    async def auto_index_notion_pages(self, page_ids: List[str], notion_service) -> Dict[str, Any]:
+        """
+        Автоматически индексирует страницы из Notion.
+        
+        Args:
+            page_ids: Список ID страниц для индексации
+            notion_service: Экземпляр NotionService
+            
+        Returns:
+            Словарь с результатами индексации
+        """
+        results = {
+            "indexed": [],
+            "failed": [],
+            "skipped": []
+        }
+        
+        for page_id in page_ids:
+            try:
+                # Получаем контент страницы
+                content = await notion_service.get_page_content(page_id, include_metadata=True)
+                
+                if not content or len(content.strip()) < 50:
+                    results["skipped"].append({
+                        "page_id": page_id,
+                        "reason": "Контент слишком короткий или пустой"
+                    })
+                    continue
+                
+                # Индексируем в базу знаний
+                doc_id = f"notion-page-{page_id}"
+                await self.add_knowledge(
+                    doc_id=doc_id,
+                    content=content,
+                    metadata={
+                        "source": "notion",
+                        "page_id": page_id,
+                        "indexed_at": datetime.now().isoformat()
+                    }
+                )
+                
+                results["indexed"].append({
+                    "page_id": page_id,
+                    "doc_id": doc_id,
+                    "content_length": len(content)
+                })
+                
+                logger.info(f"Страница {page_id} проиндексирована в базу знаний")
+                
+            except Exception as e:
+                logger.error(f"Ошибка при индексации страницы {page_id}: {e}")
+                results["failed"].append({
+                    "page_id": page_id,
+                    "error": str(e)
+                })
+        
+        return results
+    
+    async def update_index(self, doc_id: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
+        """
+        Обновляет существующий индекс.
+        
+        Args:
+            doc_id: ID документа для обновления
+            content: Новый контент
+            metadata: Новые метаданные
+        """
+        try:
+            # Удаляем старый индекс
+            try:
+                # Пробуем удалить из всех коллекций
+                for collection in [self.meetings_collection, self.knowledge_collection, self.tasks_collection]:
+                    try:
+                        collection.delete(ids=[doc_id])
+                    except:
+                        pass
+            except:
+                pass
+            
+            # Добавляем обновленный контент
+            embedding = self._get_embedding(content)
+            metadata = metadata or {}
+            metadata["updated_at"] = datetime.now().isoformat()
+            
+            # Определяем коллекцию по метаданным или используем knowledge по умолчанию
+            collection = self.knowledge_collection
+            if metadata.get("type") == "meeting":
+                collection = self.meetings_collection
+            elif metadata.get("type") == "task":
+                collection = self.tasks_collection
+            
+            collection.add(
+                ids=[doc_id],
+                embeddings=[embedding],
+                documents=[content],
+                metadatas=[metadata]
+            )
+            
+            logger.info(f"Индекс {doc_id} обновлен")
+            
+        except Exception as e:
+            logger.error(f"Ошибка при обновлении индекса {doc_id}: {e}")
+            raise
+    
+    async def sync_with_notion(self, notion_service, parent_page_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Синхронизирует базу знаний с Notion - индексирует все дочерние страницы.
+        
+        Args:
+            notion_service: Экземпляр NotionService
+            parent_page_id: ID родительской страницы (если None, используется meeting_page_id)
+            
+        Returns:
+            Словарь с результатами синхронизации
+        """
+        try:
+            from datetime import datetime
+            
+            parent_id = parent_page_id or self.settings.notion_meeting_page_id
+            if not parent_id:
+                logger.warning("Не указан parent_page_id для синхронизации")
+                return {"error": "Не указан parent_page_id"}
+            
+            # Получаем все дочерние страницы
+            blocks = await notion_service.client.blocks.children.list(parent_id)
+            page_ids = []
+            
+            for block in blocks.get("results", []):
+                if block.get("type") == "child_page":
+                    page_ids.append(block["id"])
+            
+            if not page_ids:
+                logger.info("Не найдено дочерних страниц для индексации")
+                return {
+                    "indexed": [],
+                    "failed": [],
+                    "skipped": [],
+                    "total": 0
+                }
+            
+            logger.info(f"Найдено {len(page_ids)} страниц для индексации")
+            
+            # Индексируем все страницы
+            results = await self.auto_index_notion_pages(page_ids, notion_service)
+            results["total"] = len(page_ids)
+            
+            logger.info(
+                f"Синхронизация завершена: "
+                f"индексировано {len(results['indexed'])}, "
+                f"пропущено {len(results['skipped'])}, "
+                f"ошибок {len(results['failed'])}"
+            )
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Ошибка при синхронизации с Notion: {e}")
+            return {"error": str(e)}

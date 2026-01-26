@@ -1,0 +1,24 @@
+{
+  "name": "@digital-twin/agent-worker",
+  "version": "1.0.0",
+  "description": "Multi-agent system for processing Notion AI Meeting Notes",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx src/main.ts",
+    "setup-auth": "tsx scripts/setup-auth.ts"
+  },
+  "dependencies": {
+    "@notionhq/client": "^2.2.15",
+    "dotenv": "^16.4.5",
+    "openai": "^4.28.0",
+    "playwright": "^1.42.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.19",
+    "tsx": "^4.7.1",
+    "typescript": "^5.3.3"
+  }
+}

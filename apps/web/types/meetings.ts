@@ -33,6 +33,12 @@ export interface ActionItem {
   priority: 'High' | 'Medium' | 'Low'
 }
 
+export interface KeyDecision {
+  title: string
+  description: string
+  impact?: string
+}
+
 export interface MeetingProcessingInput {
   transcript?: string
   audioFile?: File
@@ -41,9 +47,13 @@ export interface MeetingProcessingInput {
 export interface MeetingProcessingResponse {
   meeting_id: string
   summary: string
+  transcript?: string
   participants: Participant[]
   projects?: Project[]
   action_items: ActionItem[]
+  key_decisions?: KeyDecision[]
+  insights?: string[]
+  next_steps?: string[]
   draft_message?: string
   verification_warnings?: string[]
   requires_approval?: boolean

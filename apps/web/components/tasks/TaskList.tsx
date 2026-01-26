@@ -6,12 +6,15 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { apiGet } from "@/lib/api"
 import { Task } from "@/types/tasks"
+import { Clock } from "lucide-react"
 
 type TaskStatus = "pending" | "overdue" | "completed" | "all"
 
 // Расширяем тип Task для совместимости с API
 interface TaskWithStatus extends Omit<Task, "status"> {
   status: string
+  intent?: string
+  priority?: string
 }
 
 export function TaskList() {
@@ -63,6 +66,20 @@ export function TaskList() {
     )
   }
 
+  function getPriorityBadge(priority: string | undefined) {
+    if (!priority) return null
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      High: "destructive",
+      Medium: "default",
+      Low: "outline",
+    }
+    return (
+      <Badge variant={variants[priority] || "outline"} className="ml-2">
+        {priority}
+      </Badge>
+    )
+  }
+
   function formatDate(dateInput: string | Date | null | undefined) {
     if (!dateInput) return "—"
     const date = dateInput instanceof Date ? dateInput : new Date(dateInput)
@@ -110,16 +127,25 @@ export function TaskList() {
 
       <div className="space-y-3">
         {tasks.map((task) => (
-          <Card key={task.id} className="hover-lift">
+          <Card key={task.id} className="hover-lift border-l-4 border-l-primary/50">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 space-y-1">
-                  <p className="font-medium">{task.text}</p>
-                  {task.deadline && (
-                    <p className="text-sm text-muted-foreground">
-                      Дедлайн: {formatDate(task.deadline)}
+                  <p className="font-semibold text-base">{task.intent || task.text}</p>
+                  {task.intent && task.text !== task.intent && (
+                    <p className="text-sm text-muted-foreground line-clamp-2 italic">
+                      "{task.text}"
                     </p>
                   )}
+                  <div className="flex items-center gap-3 pt-1">
+                    {task.deadline && (
+                      <p className="text-xs text-muted-foreground flex items-center gap-1">
+                        <Clock className="w-3 h-3" />
+                        {formatDate(task.deadline)}
+                      </p>
+                    )}
+                    {getPriorityBadge(task.priority)}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {getStatusBadge(task.status)}

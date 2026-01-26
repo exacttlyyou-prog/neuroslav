@@ -73,5 +73,51 @@ async def init_db():
                 logger.info("Колонка action_items добавлена")
         except Exception as e:
             logger.debug(f"Проверка/добавление колонки action_items: {e}")
+        
+        # Миграция: добавляем колонки для расширенных данных саммари
+        for column_name in ['key_decisions', 'insights', 'next_steps']:
+            try:
+                result = await conn.execute(
+                    text("SELECT sql FROM sqlite_master WHERE type='table' AND name='meetings'")
+                )
+                table_sql = result.scalar()
+                if table_sql and column_name not in table_sql:
+                    logger.info(f"Добавляем колонку {column_name} в таблицу meetings...")
+                    await conn.execute(text(f"ALTER TABLE meetings ADD COLUMN {column_name} JSON"))
+                    logger.info(f"Колонка {column_name} добавлена")
+            except Exception as e:
+                logger.debug(f"Проверка/добавление колонки {column_name}: {e}")
+        
+        # Миграция: добавляем колонку telegram_chat_id в таблицу contacts, если её нет
+        try:
+            result = await conn.execute(
+                text("SELECT sql FROM sqlite_master WHERE type='table' AND name='contacts'")
+            )
+            table_sql = result.scalar()
+            if table_sql and 'telegram_chat_id' not in table_sql:
+                logger.info("Добавляем колонку telegram_chat_id в таблицу contacts...")
+                await conn.execute(text("ALTER TABLE contacts ADD COLUMN telegram_chat_id VARCHAR"))
+                logger.info("Колонка telegram_chat_id добавлена")
+        except Exception as e:
+            logger.debug(f"Проверка/добавление колонки telegram_chat_id: {e}")
+        
+        # Миграция: добавляем колонки tov_style и is_active в таблицу contacts
+        for column_name, column_type in [('tov_style', 'VARCHAR'), ('is_active', 'VARCHAR')]:
+            try:
+                result = await conn.execute(
+                    text("SELECT sql FROM sqlite_master WHERE type='table' AND name='contacts'")
+                )
+                table_sql = result.scalar()
+                if table_sql and column_name not in table_sql:
+                    logger.info(f"Добавляем колонку {column_name} в таблицу contacts...")
+                    await conn.execute(text(f"ALTER TABLE contacts ADD COLUMN {column_name} {column_type}"))
+                    # Устанавливаем значения по умолчанию
+                    if column_name == 'tov_style':
+                        await conn.execute(text("UPDATE contacts SET tov_style = 'default' WHERE tov_style IS NULL"))
+                    elif column_name == 'is_active':
+                        await conn.execute(text("UPDATE contacts SET is_active = 'true' WHERE is_active IS NULL"))
+                    logger.info(f"Колонка {column_name} добавлена")
+            except Exception as e:
+                logger.debug(f"Проверка/добавление колонки {column_name}: {e}")
     
     logger.info("База данных инициализирована")

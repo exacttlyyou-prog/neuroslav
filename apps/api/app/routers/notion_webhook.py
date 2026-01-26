@@ -10,12 +10,10 @@ from typing import Dict, Any, Optional
 from fastapi import APIRouter, HTTPException, Request, Header
 from loguru import logger
 
+from app.services.notion_extractor import notion_extractor
+from app.services.telegram_service import TelegramService
+
 router = APIRouter()
-
-# Путь к корню проекта (от apps/api)
-PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-EXTRACTOR_SCRIPT = PROJECT_ROOT / "apps" / "extractor" / "index.js"
-
 
 def extract_page_id_from_event(event: Dict[str, Any]) -> Optional[str]:
     """
@@ -101,49 +99,42 @@ async def notion_webhook(
 
         logger.info(f"📄 Извлечен page_id: {page_id}")
 
-        # Проверяем наличие скрипта извлечения
-        if not EXTRACTOR_SCRIPT.exists():
-            logger.error(f"❌ Скрипт извлечения не найден: {EXTRACTOR_SCRIPT}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Скрипт извлечения не найден: {EXTRACTOR_SCRIPT}"
-            )
-
-        # Запускаем скрипт извлечения в фоновом режиме
-        logger.info(f"🚀 Запуск скрипта извлечения для page_id: {page_id}")
+        # Запускаем извлечение (гибридный метод: API -> Playwright)
+        logger.info(f"🚀 Запуск извлечения данных для page_id: {page_id}")
         
         try:
-            # Запускаем скрипт через subprocess
-            # Используем абсолютный путь к node и скрипту
-            process = subprocess.Popen(
-                [
-                    "node",
-                    str(EXTRACTOR_SCRIPT),
-                    page_id
-                ],
-                cwd=str(PROJECT_ROOT),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True
-            )
+            # Вызываем сервис напрямую
+            result = await notion_extractor.extract_data(page_id)
 
-            # Не ждем завершения процесса (асинхронная обработка)
-            # Логируем запуск
-            logger.info(f"✅ Скрипт извлечения запущен (PID: {process.pid})")
+            if result["success"]:
+                logger.info(f"✅ Данные успешно извлечены методом: {result.get('method')}")
+                
+                # Отправляем уведомление админу
+                try:
+                    telegram = TelegramService()
+                    message = f"<b>🔔 Обновление в Notion</b>\n\n"
+                    message += f"📄 <b>Page ID:</b> <code>{page_id}</code>\n"
+                    message += f"🛠 <b>Метод:</b> <code>{result.get('method')}</code>\n\n"
+                    message += f"📝 <b>Контент:</b>\n{result['content']}"
+                    
+                    await telegram.send_notification(message)
+                    logger.info("✅ Уведомление отправлено в Telegram")
+                except Exception as tg_error:
+                    logger.error(f"⚠️ Не удалось отправить уведомление в Telegram: {tg_error}")
 
-            return {
-                "status": "accepted",
-                "message": f"Скрипт извлечения запущен для page_id: {page_id}",
-                "page_id": page_id,
-                "process_id": process.pid
-            }
+                return {
+                    "status": "success",
+                    "method": result.get("method"),
+                    "page_id": page_id,
+                    "content_preview": result["content"][:100] + "..."
+                }
+            else:
+                logger.error(f"❌ Не удалось извлечь данные: {result.get('error')}")
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Ошибка извлечения: {result.get('error')}"
+                )
 
-        except FileNotFoundError:
-            logger.error("❌ Node.js не найден. Установите Node.js для работы скрипта извлечения.")
-            raise HTTPException(
-                status_code=500,
-                detail="Node.js не установлен или не найден в PATH"
-            )
         except Exception as e:
             logger.error(f"❌ Ошибка при запуске скрипта извлечения: {e}")
             raise HTTPException(

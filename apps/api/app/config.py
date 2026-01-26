@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     notion_token: str | None = None
     notion_mcp_token: str | None = None
     notion_meeting_page_id: str | None = None
+    notion_meeting_minutes_page_id: str | None = None  # Опционально: если не указана, создается автоматически
     notion_people_db_id: str | None = None
     notion_projects_db_id: str | None = None
     notion_glossary_db_id: str | None = None
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     telegram_bot_token: str | None = None
     admin_chat_id: str | None = None
     ok_chat_id: str | None = None
+    telegram_webhook_url: str | None = None  # URL для автоматической настройки webhook при старте
     
     # Telegram MCP (для MTProto серверов)
     telegram_api_id: str | None = None

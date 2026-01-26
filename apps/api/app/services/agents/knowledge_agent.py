@@ -24,7 +24,8 @@ class KnowledgeAgent(BaseAgent):
         self,
         user_input: str,
         classification: IntentClassification,
-        context: List[str]
+        context: List[str],
+        sender_username: str = None
     ) -> Dict[str, Any]:
         """
         Сохраняет информацию в базу знаний.
@@ -47,8 +48,21 @@ class KnowledgeAgent(BaseAgent):
                 }
             )
             
+            # Формируем ответ через персону
+            context_info = f"""
+            Информация сохранена в базу знаний.
+            ID: {doc_id}
+            Категория: {category}
+            Ключевые слова: {', '.join(keywords) if keywords else 'нет'}
+            """
+            
+            response_text = await self.ollama.generate_persona_response(
+                user_input=f"Сохрани знание: {user_input}",
+                context=context_info
+            )
+            
             return {
-                "response": f"✅ Информация сохранена в базу знаний\n\nКатегория: {category}\nКлючевые слова: {', '.join(keywords) if keywords else 'нет'}",
+                "response": response_text,
                 "actions": [
                     {
                         "type": "knowledge_saved",

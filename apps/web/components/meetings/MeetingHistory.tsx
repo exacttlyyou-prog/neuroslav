@@ -28,7 +28,13 @@ export function MeetingHistory() {
     try {
       setLoading(true)
       const response = await apiGet<{ meetings: Meeting[] }>("/api/meetings")
-      setMeetings(response.meetings || [])
+      // Принудительная сортировка на фронтенде: новые сверху
+      const sortedMeetings = (response.meetings || []).sort((a, b) => {
+        const dateA = a.created_at ? new Date(a.created_at).getTime() : 0
+        const dateB = b.created_at ? new Date(b.created_at).getTime() : 0
+        return dateB - dateA
+      })
+      setMeetings(sortedMeetings)
     } catch (error) {
       console.error("Ошибка при загрузке встреч:", error)
     } finally {
@@ -45,6 +51,36 @@ export function MeetingHistory() {
       hour: "2-digit",
       minute: "2-digit",
     })
+  }
+
+  function stripHtml(html: string | null) {
+    if (!html) return ""
+    return html.replace(/<[^>]*>?/gm, "")
+  }
+
+  function getStatusBadge(status: string) {
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      pending_approval: "secondary",
+      sent: "default",
+      processing: "outline",
+      completed: "default",
+      error: "destructive",
+    }
+    const labels: Record<string, string> = {
+      pending_approval: "Ожидает",
+      sent: "Отправлено",
+      processing: "Обработка",
+      completed: "Готово",
+      error: "Ошибка",
+    }
+    return (
+      <Badge 
+        variant={variants[status] || "secondary"} 
+        className="shrink-0 bg-background/40 border-border/50 backdrop-blur-sm"
+      >
+        {labels[status] || status}
+      </Badge>
+    )
   }
 
   const filteredMeetings = meetings.filter((meeting) => {
@@ -83,28 +119,28 @@ export function MeetingHistory() {
           placeholder="Поиск по встрече..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="rounded-lg"
+          className="rounded-xl glass border-border/50 bg-background/30 backdrop-blur-sm"
         />
       </div>
 
       <div className="space-y-3">
         {filteredMeetings.map((meeting) => (
-          <Card key={meeting.id} className="hover-lift">
-            <CardContent className="p-4">
-              <div className="space-y-2">
+          <Card key={meeting.id} className="glass-strong">
+            <CardContent className="p-5">
+              <div className="space-y-3">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     {meeting.summary && (
-                      <p className="text-sm line-clamp-2 mb-2">
-                        {meeting.summary}
+                      <p className="text-sm leading-relaxed mb-3 line-clamp-3 text-foreground/90">
+                        {stripHtml(meeting.summary)}
                       </p>
                     )}
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span>{formatDate(meeting.created_at)}</span>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="font-medium">{formatDate(meeting.created_at)}</span>
                       {meeting.participants && meeting.participants.length > 0 && (
                         <>
-                          <span>•</span>
-                          <span>
+                          <span className="opacity-50">•</span>
+                          <span className="opacity-80">
                             {meeting.participants.length}{" "}
                             {meeting.participants.length === 1
                               ? "участник"
@@ -114,9 +150,7 @@ export function MeetingHistory() {
                       )}
                     </div>
                   </div>
-                  <Badge variant="secondary" className="shrink-0">
-                    {meeting.status === "completed" ? "Готово" : meeting.status}
-                  </Badge>
+                  {getStatusBadge(meeting.status)}
                 </div>
               </div>
             </CardContent>

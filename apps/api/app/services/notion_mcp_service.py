@@ -9,6 +9,7 @@ import socket
 import httpx
 import threading
 import shlex
+import json
 from typing import Optional, Dict, Any
 from loguru import logger
 from pathlib import Path
@@ -28,7 +29,7 @@ class NotionMCPService:
         self.port = 3002  # Начинаем с 3002, так как 3001 обычно занят Next.js
         self.auth_token = "local_mcp_auth_token_12345"
         self.server_process = None
-        self.server_url = f"http://localhost:{self.port}"
+        self.server_url = f"http://127.0.0.1:{self.port}"
         self.initialized = False
         self.session_id = None
         self.log_threads = []  # Потоки для чтения логов
@@ -46,6 +47,20 @@ class NotionMCPService:
         finally:
             pipe.close()
     
+    def _parse_mcp_response(self, response: httpx.Response) -> Dict[str, Any]:
+        """Парсит ответ от MCP сервера (JSON или SSE)."""
+        content_type = response.headers.get("content-type", "")
+        if "text/event-stream" in content_type:
+            # Parse SSE
+            for line in response.text.splitlines():
+                if line.startswith("data: "):
+                    try:
+                        return json.loads(line[6:])
+                    except json.JSONDecodeError:
+                        pass
+            raise ValueError("No valid JSON data in SSE response")
+        return response.json()
+
     async def _check_server_running(self) -> bool:
         """Проверяет, запущен ли MCP сервер на порту."""
         try:
@@ -77,7 +92,7 @@ class NotionMCPService:
                 )
                 if response.status_code == 200:
                     try:
-                        data = response.json()
+                        data = self._parse_mcp_response(response)
                         if "result" in data:
                             logger.info(f"✅ MCP сервер уже запущен на порту {self.port}")
                             result = data["result"]
@@ -134,7 +149,7 @@ class NotionMCPService:
                 # Ищем свободный порт (начинаем с 3002, так как 3001 обычно занят Next.js)
                 for alt_port in range(3002, 3010):
                     self.port = alt_port
-                    self.server_url = f"http://localhost:{self.port}"
+                    self.server_url = f"http://127.0.0.1:{self.port}"
                     # Проверяем, может там уже работает MCP сервер
                     if await self._check_server_running():
                         logger.info(f"Используем существующий MCP сервер на порту {self.port}")
@@ -157,8 +172,8 @@ class NotionMCPService:
                 logger.error("NOTION_TOKEN не установлен или слишком короткий")
                 return False
             
-            if not self.token.startswith("secret_"):
-                logger.warning("NOTION_TOKEN не начинается с 'secret_', возможно неверный формат")
+            if not self.token.startswith("secret_") and not self.token.startswith("ntn_"):
+                logger.warning("NOTION_TOKEN не начинается с 'secret_' или 'ntn_', возможно неверный формат")
             
             # Согласно техническому отчету: критическая проверка версии Node.js
             # MCP SDK требует Node.js v18.0.0 или выше
@@ -235,7 +250,7 @@ class NotionMCPService:
             for attempt in range(15):  # Увеличиваем время ожидания до 15 секунд
                 await asyncio.sleep(1)
                 
-                    # Проверяем, не завершился ли процесс с ошибкой
+                # Проверяем, не завершился ли процесс с ошибкой
                 if self.server_process.poll() is not None:
                     # Процесс завершился - читаем ошибки (если потоки еще не прочитали)
                     try:
@@ -250,38 +265,9 @@ class NotionMCPService:
                     return False
                 
                 try:
-                    async with httpx.AsyncClient(timeout=3.0) as client:
-                        # Пробуем initialize запрос
-                        init_request = {
-                            "jsonrpc": "2.0",
-                            "id": 0,
-                            "method": "initialize",
-                            "params": {
-                                "protocolVersion": "2024-11-05",
-                                "capabilities": {},
-                                "clientInfo": {
-                                    "name": "notion-mcp-client",
-                                    "version": "1.0.0"
-                                }
-                            }
-                        }
-                        headers = {
-                            "Authorization": f"Bearer {self.auth_token}",
-                            "Content-Type": "application/json",
-                            "Accept": "application/json, text/event-stream",
-                            "MCP-Protocol-Version": "2024-11-05"
-                        }
-                        response = await client.post(
-                            f"{self.server_url}/mcp",
-                            headers=headers,
-                            json=init_request
-                        )
-                        if response.status_code == 200:
-                            data = response.json()
-                            if "result" in data:
-                                logger.info(f"✅ Локальный MCP сервер запущен на порту {self.port}")
-                                self.initialized = True
-                                return True
+                    if await self._check_server_running():
+                        logger.info(f"✅ Локальный MCP сервер запущен на порту {self.port}")
+                        return True
                 except Exception as e:
                     if attempt == 0:
                         logger.debug(f"Ожидание запуска MCP сервера... (попытка {attempt + 1})")
@@ -364,7 +350,7 @@ class NotionMCPService:
                         json=init_request
                     )
                     if init_response.status_code == 200:
-                        init_data = init_response.json()
+                        init_data = self._parse_mcp_response(init_response)
                         if "result" in init_data:
                             # Сохраняем session_id если есть
                             result = init_data["result"]
@@ -402,7 +388,7 @@ class NotionMCPService:
                 
                 tool_name = "notion-fetch"  # Правильное имя согласно документации Notion MCP
                 if tools_response.status_code == 200:
-                    tools_data = tools_response.json()
+                    tools_data = self._parse_mcp_response(tools_response)
                     if "result" in tools_data and "tools" in tools_data["result"]:
                         available_tools = [t.get("name") for t in tools_data["result"]["tools"]]
                         logger.info(f"Доступные инструменты MCP: {available_tools}")
@@ -452,7 +438,7 @@ class NotionMCPService:
                 )
                 
                 if response.status_code == 200:
-                    data = response.json()
+                    data = self._parse_mcp_response(response)
                     if "result" in data:
                         result = data["result"]
                         logger.info(f"✅ Получены данные через MCP сервер (инструмент: {tool_name}, URL: {page_url})")
@@ -486,7 +472,7 @@ class NotionMCPService:
                             )
                             
                             if fallback_response.status_code == 200:
-                                fallback_data = fallback_response.json()
+                                fallback_data = self._parse_mcp_response(fallback_response)
                                 if "result" in fallback_data:
                                     logger.info(f"✅ Получены данные через MCP сервер (fallback с page_id: {page_id_clean})")
                                     return fallback_data["result"]

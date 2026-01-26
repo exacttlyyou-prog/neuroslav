@@ -11,12 +11,16 @@ from app.services.notion_service import NotionService
 from app.services.rag_service import RAGService
 from app.services.context_loader import ContextLoader
 from app.services.telegram_service import TelegramService
+from app.services.transcription_service import transcription_service
 from app.models.schemas import MeetingAnalysis
 from app.db.models import Meeting, Contact
 from app.db.database import AsyncSessionLocal
 from app.config import get_settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from pathlib import Path
+import tempfile
+import os
 
 
 class MeetingWorkflow:
@@ -33,7 +37,8 @@ class MeetingWorkflow:
         self,
         transcript: Optional[str] = None,
         audio_file: Optional[bytes] = None,
-        notion_page_id: Optional[str] = None
+        notion_page_id: Optional[str] = None,
+        sender_username: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Обрабатывает встречу: транскрибирует (если аудио), анализирует, извлекает участников, генерирует draft.
@@ -51,12 +56,48 @@ class MeetingWorkflow:
             
             # Шаг 1: Получение транскрипта
             if audio_file:
-                # TODO: Реализовать транскрипцию через Ollama Whisper или другой сервис
-                logger.warning("Транскрипция аудио пока не реализована, используем переданный transcript")
-                transcript = transcript or ""
+                logger.info("🎙 Начинаю транскрипцию аудио через Whisper...")
+                try:
+                    # Сохраняем аудио во временный файл для Whisper
+                    with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as tmp_file:
+                        tmp_path = Path(tmp_file.name)
+                        tmp_file.write(audio_file)
+                        tmp_file.flush()
+                    
+                    # Транскрибируем через Whisper с retry логикой
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            transcript = await transcription_service.transcribe(tmp_path, language="ru")
+                            if transcript and len(transcript.strip()) > 10:
+                                logger.info(f"✅ Транскрипция успешна ({len(transcript)} символов)")
+                                break
+                            else:
+                                logger.warning(f"⚠️ Транскрипция вернула пустой или слишком короткий текст (попытка {attempt + 1}/{max_retries})")
+                                if attempt < max_retries - 1:
+                                    await asyncio.sleep(2)  # Небольшая задержка перед повтором
+                        except Exception as transcribe_error:
+                            logger.error(f"❌ Ошибка транскрипции (попытка {attempt + 1}/{max_retries}): {transcribe_error}")
+                            if attempt < max_retries - 1:
+                                await asyncio.sleep(2)
+                            else:
+                                raise
+                    
+                    # Удаляем временный файл
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception as e:
+                        logger.warning(f"Не удалось удалить временный файл {tmp_path}: {e}")
+                    
+                    if not transcript or len(transcript.strip()) < 10:
+                        raise ValueError("Транскрипция не удалась или вернула пустой текст")
+                        
+                except Exception as e:
+                    logger.error(f"❌ Критическая ошибка при транскрипции: {e}")
+                    raise ValueError(f"Не удалось транскрибировать аудио: {str(e)}")
             
-            if not transcript:
-                raise ValueError("Необходим transcript или audio_file")
+            if not transcript or len(transcript.strip()) < 10:
+                raise ValueError("Необходим transcript (минимум 10 символов) или audio_file")
             
             # Шаг 2-3: Параллельная загрузка RAG и синхронизация контекста из Notion
             import asyncio
@@ -75,24 +116,36 @@ class MeetingWorkflow:
                 elif isinstance(meeting, str):
                     context.append(meeting)
             
-            # Шаг 4: Анализ встречи через Ollama
+            # Шаг 4: Анализ встречи через Ollama с передачей username
             logger.info("Анализ встречи через Ollama...")
             analysis = await self.ollama.analyze_meeting(
                 content=transcript,
                 context=context,
-                response_schema=MeetingAnalysis
+                response_schema=MeetingAnalysis,
+                sender_username=sender_username
             )
             
-            # Шаг 5: Извлечение участников (из analysis или через NER)
+            # Шаг 5: Извлечение участников из analysis
             participants = []
+            # Используем участников из analysis.participants (основной источник)
+            for participant in analysis.participants:
+                participants.append({
+                    "name": participant.name,
+                    "role": participant.role,
+                    "matched": False
+                })
+            
+            # Дополнительно извлекаем участников из action_items (если не были найдены в participants)
+            existing_names = {p["name"].lower() for p in participants}
             if analysis.action_items:
-                # Извлекаем участников из action_items
                 for item in analysis.action_items:
-                    if item.assignee:
+                    if item.assignee and item.assignee.lower() not in existing_names:
                         participants.append({
                             "name": item.assignee,
+                            "role": None,
                             "matched": False
                         })
+                        existing_names.add(item.assignee.lower())
             
             # Шаг 6: Матчинг участников с контактами (с fuzzy matching)
             matched_participants = []
@@ -232,6 +285,19 @@ class MeetingWorkflow:
                 for item in analysis.action_items
             ]
             
+            # Извлекаем расширенные данные из анализа
+            key_decisions_data = [
+                {
+                    "title": decision.title,
+                    "description": decision.description,
+                    "impact": decision.impact
+                }
+                for decision in (analysis.key_decisions if hasattr(analysis, 'key_decisions') else [])
+            ]
+            
+            insights_data = analysis.insights if hasattr(analysis, 'insights') else []
+            next_steps_data = analysis.next_steps if hasattr(analysis, 'next_steps') else []
+            
             async with AsyncSessionLocal() as session:
                 meeting = Meeting(
                     id=meeting_id,
@@ -240,6 +306,9 @@ class MeetingWorkflow:
                     participants=matched_participants,
                     projects=matched_projects,
                     action_items=action_items_data,
+                    key_decisions=key_decisions_data,
+                    insights=insights_data,
+                    next_steps=next_steps_data,
                     draft_message=draft_message,
                     status="pending_approval",  # Требует согласования перед отправкой
                     notion_page_id=notion_page_id  # Сохраняем только переданный ID для связи, не создаем/не пишем в страницу
@@ -283,6 +352,9 @@ class MeetingWorkflow:
                     }
                     for item in analysis.action_items
                 ],
+                "key_decisions": key_decisions_data,
+                "insights": insights_data,
+                "next_steps": next_steps_data,
                 "verification_warnings": verification_warnings,
                 "requires_approval": True,
                 "status": "pending_approval",
@@ -292,3 +364,88 @@ class MeetingWorkflow:
         except Exception as e:
             logger.error(f"Ошибка при обработке встречи: {e}")
             raise
+    
+    def extract_tags(
+        self,
+        transcript: str,
+        projects: List[Dict[str, Any]],
+        action_items: List[Dict[str, Any]],
+        participants: Optional[List[Dict[str, Any]]] = None
+    ) -> List[str]:
+        """
+        Извлекает теги из встречи для организации.
+        
+        Args:
+            transcript: Транскрипт встречи
+            projects: Список проектов из встречи
+            action_items: Список задач
+            participants: Список участников (опционально)
+            
+        Returns:
+            Список тегов (например: ['crm', 'ai-integration', 'design'])
+        """
+        tags = []
+        
+        # Теги из проектов
+        for project in projects:
+            if isinstance(project, dict):
+                project_key = project.get('key', '')
+                project_name = project.get('name', '')
+                if project_key:
+                    # Используем ключ проекта как тег (например, "CRM" -> "crm")
+                    tag = project_key.lower().replace(' ', '-').replace('_', '-')
+                    if tag and tag not in tags:
+                        tags.append(tag)
+                elif project_name:
+                    # Если нет ключа, используем имя проекта
+                    tag = project_name.lower().replace(' ', '-').replace('_', '-')
+                    if tag and tag not in tags:
+                        tags.append(tag)
+        
+        # Теги из action_items (извлекаем ключевые слова)
+        common_tech_keywords = [
+            'ai', 'ml', 'crm', 'api', 'ui', 'ux', 'design', 'frontend', 'backend',
+            'database', 'integration', 'automation', 'workflow', 'notion',
+            'telegram', 'openai', 'ollama', 'whisper', 'transcription'
+        ]
+        
+        # Объединяем текст из action_items для анализа
+        action_text = ' '.join([
+            item.get('text', '') or item.get('title', '') or str(item)
+            for item in action_items
+        ]).lower()
+        
+        # Ищем ключевые слова в задачах
+        for keyword in common_tech_keywords:
+            if keyword in action_text and keyword not in tags:
+                tags.append(keyword)
+        
+        # Теги из транскрипта (ищем упоминания технологий и проектов)
+        transcript_lower = transcript.lower()
+        for keyword in common_tech_keywords:
+            if keyword in transcript_lower and keyword not in tags:
+                tags.append(keyword)
+        
+        # Извлекаем теги из упоминаний проектов в транскрипте
+        # Ищем паттерны типа "проект X", "в проекте Y"
+        import re
+        project_patterns = [
+            r'проект[ае]?\s+([a-zа-яё]+)',
+            r'в\s+проекте\s+([a-zа-яё]+)',
+            r'проект\s+"([^"]+)"',
+        ]
+        
+        for pattern in project_patterns:
+            matches = re.findall(pattern, transcript_lower)
+            for match in matches:
+                if isinstance(match, tuple):
+                    match = match[0]
+                tag = match.strip().lower().replace(' ', '-')
+                if tag and len(tag) > 2 and tag not in tags:
+                    tags.append(tag)
+        
+        # Ограничиваем количество тегов (максимум 10)
+        tags = tags[:10]
+        
+        logger.info(f"Извлечено тегов: {tags}")
+        return tags

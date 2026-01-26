@@ -103,18 +103,18 @@ export function ChatInterface() {
   }
 
   return (
-    <div className="flex h-[calc(100vh-200px)] gap-4">
+    <div className="flex flex-col lg:flex-row h-[550px] max-h-[70vh] gap-4 max-w-4xl mx-auto items-stretch">
       {/* Основной чат */}
-      <div className="flex-1 flex flex-col border rounded-lg">
+      <div className="flex-1 flex flex-col glass rounded-2xl overflow-hidden min-h-0 border shadow-lg bg-background/50 relative">
         {/* История сообщений */}
-        <div className="flex-1 overflow-y-auto p-4 chat-scroll">
+        <div className="flex-1 overflow-y-auto p-6 chat-scroll">
           <MessageList messages={messages} />
           {loading && (
-            <div className="flex justify-start mb-4">
-              <div className="bg-muted rounded-lg px-4 py-3">
+            <div className="flex justify-start mb-4 animate-in fade-in duration-300">
+              <div className="glass rounded-xl px-4 py-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <div className="w-2 h-2 bg-current rounded-full animate-pulse" />
-                  <span>Обработка...</span>
+                  <span>Обработка агентом...</span>
                 </div>
               </div>
             </div>
@@ -123,15 +123,15 @@ export function ChatInterface() {
         </div>
 
         {/* Поле ввода */}
-        <div className="border-t p-4">
-          <div className="flex gap-2">
+        <div className="border-t border-border/30 p-4 glass-strong">
+          <div className="flex gap-3">
             <Textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="Напишите сообщение..."
               rows={2}
-              className="resize-none rounded-lg"
+              className="resize-none rounded-xl glass border-border/50 bg-background/30"
               disabled={loading}
             />
             <Button
@@ -146,7 +146,7 @@ export function ChatInterface() {
       </div>
 
       {/* Боковая панель с быстрыми действиями */}
-      <div className="w-64">
+      <div className="w-full lg:w-64">
         <QuickActions
           onProcessLastMeeting={handleProcessLastMeeting}
           onShowTasks={handleShowTasks}

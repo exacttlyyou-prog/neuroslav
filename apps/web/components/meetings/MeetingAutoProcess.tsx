@@ -218,7 +218,7 @@ export function MeetingAutoProcess() {
                   <div className="flex items-center gap-2">
                     <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400" />
                     <CardTitle className="text-lg text-blue-900 dark:text-blue-100">
-                      Встреча обработана и ожидает согласования
+                      Ожидает согласования
                     </CardTitle>
                   </div>
                   <CardDescription className="text-blue-700 dark:text-blue-300">
@@ -236,7 +236,7 @@ export function MeetingAutoProcess() {
                       verification_warnings: result.processing.verification_warnings || [],
                       requires_approval: true,
                       status: "pending_approval",
-                      message: "Встреча обработана и ожидает согласования"
+                      message: "Ожидает согласования"
                     }}
                     onApproved={() => {
                       setStage('completed')

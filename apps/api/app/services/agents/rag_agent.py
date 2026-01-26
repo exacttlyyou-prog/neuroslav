@@ -14,7 +14,7 @@ class RAGAgent(BaseAgent):
     
     def __init__(self):
         super().__init__()
-        self.ollama = OllamaService(context_loader=self.context_loader)
+        # self.ollama уже инициализирован в BaseAgent
     
     def get_agent_type(self) -> str:
         return "rag_query"
@@ -23,7 +23,8 @@ class RAGAgent(BaseAgent):
         self,
         user_input: str,
         classification: IntentClassification,
-        context: List[str]
+        context: List[str],
+        sender_username: str = None
     ) -> Dict[str, Any]:
         """
         Ищет информацию в базе знаний и формирует ответ.
@@ -56,35 +57,35 @@ class RAGAgent(BaseAgent):
                     "items": tasks
                 })
             
-            # Формируем ответ на основе найденной информации
+            # Формируем контекст из найденной информации
+            context_text = ""
             if results:
-                response_parts = ["🔍 Найдена информация:\n\n"]
-                
                 for result_group in results:
                     if result_group["type"] == "meetings":
-                        response_parts.append("📅 **Встречи:**\n")
+                        context_text += "\n📅 ВСТРЕЧИ:\n"
                         for item in result_group["items"][:2]:
-                            content = item.get("content", "")[:200] if isinstance(item, dict) else str(item)[:200]
-                            response_parts.append(f"- {content}...\n")
-                        response_parts.append("\n")
+                            content = item.get("content", "")[:500] if isinstance(item, dict) else str(item)[:500]
+                            context_text += f"- {content}...\n"
                     
                     elif result_group["type"] == "knowledge":
-                        response_parts.append("📚 **Знания:**\n")
+                        context_text += "\n📚 ЗНАНИЯ:\n"
                         for item in result_group["items"][:2]:
-                            content = item.get("content", "")[:200] if isinstance(item, dict) else str(item)[:200]
-                            response_parts.append(f"- {content}...\n")
-                        response_parts.append("\n")
+                            content = item.get("content", "")[:500] if isinstance(item, dict) else str(item)[:500]
+                            context_text += f"- {content}...\n"
                     
                     elif result_group["type"] == "tasks":
-                        response_parts.append("✅ **Задачи:**\n")
+                        context_text += "\n✅ ЗАДАЧИ:\n"
                         for item in result_group["items"][:2]:
-                            content = item.get("content", "")[:200] if isinstance(item, dict) else str(item)[:200]
-                            response_parts.append(f"- {content}...\n")
-                        response_parts.append("\n")
-                
-                response_text = "".join(response_parts)
+                            content = item.get("content", "")[:500] if isinstance(item, dict) else str(item)[:500]
+                            context_text += f"- {content}...\n"
             else:
-                response_text = "❌ Информация не найдена в базе знаний"
+                context_text = "Информации в базе не найдено."
+
+            # Генерируем ответ через персону Neural Slav
+            response_text = await self.ollama.generate_persona_response(
+                user_input=user_input,
+                context=context_text
+            )
             
             return {
                 "response": response_text,
