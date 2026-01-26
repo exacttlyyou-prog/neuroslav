@@ -11,7 +11,7 @@ from app.services.ollama_service import OllamaService
 from app.services.rag_service import RAGService
 from app.db.models import KnowledgeItem
 from app.db.database import AsyncSessionLocal
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from app.utils.text_splitter import RecursiveCharacterTextSplitter
 
 
 class KnowledgeWorkflow:
