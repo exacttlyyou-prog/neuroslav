@@ -55,7 +55,24 @@ DATABASE_URL=postgresql://user:password@host:port/dbname
 
 ## Шаг 3: Деплой на Vercel
 
-### 3.1. Первый деплой
+### 3.1. Вариант A: Деплой через Vercel Dashboard (рекомендуется)
+
+1. Зайди на [vercel.com](https://vercel.com) и войди в аккаунт
+2. Нажми **Add New...** → **Project**
+3. Подключи GitHub репозиторий (если еще не подключен):
+   - Нажми **Import Git Repository**
+   - Выбери репозиторий `exacttlyyou-prog/neuroslav` (или свой)
+   - Нажми **Import**
+4. Настрой проект:
+   - **Project Name:** `neuroslav-api` (или другое название)
+   - **Framework Preset:** Other (или оставь как есть)
+   - **Root Directory:** `./` (корень проекта)
+   - **Build Command:** оставь пустым (Vercel сам определит)
+   - **Output Directory:** оставь пустым
+   - **Install Command:** оставь пустым
+5. Нажми **Deploy**
+
+### 3.2. Вариант B: Деплой через терминал
 
 ```bash
 cd "/Users/slava/Desktop/коллеги, обсудили"
@@ -69,11 +86,11 @@ Vercel спросит:
 - **What's your project's name?** → введи название (например: `neuroslav-api`)
 - **In which directory is your code located?** → `./` (корень проекта)
 
-### 3.2. После деплоя получи URL
+### 3.3. После деплоя получи URL
 
 Vercel покажет URL вида: `https://твой-проект.vercel.app`
 
-**Скопируй этот URL!**
+**Скопируй этот URL!** Он понадобится для настройки webhook.
 
 ## Шаг 4: Настройка Telegram Webhook
 

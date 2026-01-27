@@ -56,14 +56,18 @@ async def startup_event():
     await init_db()
     
     # Валидация токенов при старте
-    # #region agent log
     import os
-    from datetime import datetime
-    log_line = f'{{"sessionId":"debug-session","timestamp":{int(datetime.now().timestamp()*1000)},"location":"main.py: startup","message":"Starting server, checking env and modules","data":{{"PYTHONPATH":os.environ.get("PYTHONPATH"),"cwd":os.getcwd(),"settings_notion":bool(settings.notion_token)}}}}\n'
-    with open("/Users/slava/Desktop/коллеги, обсудили/.cursor/debug.log", "a") as f:
-        f.write(log_line)
-    # #endregion
+    _debug_log_path = os.environ.get("DEBUG_LOG_PATH")
+    if _debug_log_path and os.path.isdir(os.path.dirname(_debug_log_path)):
+        try:
+            from datetime import datetime
+            log_line = f'{{"sessionId":"debug-session","timestamp":{int(datetime.now().timestamp()*1000)},"location":"main.py: startup","message":"Starting server"}}\n'
+            with open(_debug_log_path, "a") as f:
+                f.write(log_line)
+        except Exception:
+            pass
     settings = get_settings()
+    _is_vercel = os.environ.get("VERCEL") == "1"
     
     # Проверка Notion токена
     if settings.notion_token:
@@ -91,23 +95,25 @@ async def startup_event():
                 except Exception as e:
                     logger.warning(f"⚠️ Не удалось автоматически создать базы данных: {e}")
                 
-                # Предзагружаем контекст для оптимизации скорости
-                try:
-                    from app.services.context_loader import ContextLoader
-                    context_loader = ContextLoader()
-                    await context_loader.preload_context()
-                    logger.info("✅ Контекст предзагружен для быстрого доступа")
-                except Exception as e:
-                    logger.warning(f"⚠️ Ошибка предзагрузки контекста: {e}")
+                # Предзагружаем контекст только не на Vercel (serverless живёт запрос)
+                if not _is_vercel:
+                    try:
+                        from app.services.context_loader import ContextLoader
+                        context_loader = ContextLoader()
+                        await context_loader.preload_context()
+                        logger.info("✅ Контекст предзагружен для быстрого доступа")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка предзагрузки контекста: {e}")
                 
-                # Запускаем мониторинг производительности
-                try:
-                    from app.core.monitoring import get_performance_monitor
-                    monitor = get_performance_monitor()
-                    monitor.start_background_collection()
-                    logger.info("✅ Мониторинг производительности запущен")
-                except Exception as e:
-                    logger.warning(f"⚠️ Ошибка запуска мониторинга: {e}")
+                # Мониторинг производительности — только не на Vercel
+                if not _is_vercel:
+                    try:
+                        from app.core.monitoring import get_performance_monitor
+                        monitor = get_performance_monitor()
+                        monitor.start_background_collection()
+                        logger.info("✅ Мониторинг производительности запущен")
+                    except Exception as e:
+                        logger.warning(f"⚠️ Ошибка запуска мониторинга: {e}")
                     
         except ValueError as e:
             logger.warning(f"⚠️ Не удалось инициализировать NotionService: {e}")
@@ -152,73 +158,66 @@ async def startup_event():
     else:
         logger.warning("⚠️ TELEGRAM_BOT_TOKEN не установлен, функции Telegram недоступны")
     
-    # Запуск фонового парсера для страницы "встречи альфа 2026"
-    try:
-        from app.services.notion_background_parser import NotionBackgroundParser
-        background_parser = NotionBackgroundParser()
-        await background_parser.start()
-        # Сохраняем ссылку на парсер для доступа из других мест
-        app.state.background_parser = background_parser
-        logger.info("✅ Фоновый парсер страницы встреч запущен")
-    except Exception as e:
-        logger.warning(f"⚠️ Не удалось запустить фоновый парсер: {e}")
-    
-    # Запуск ProactiveService для проактивных действий
-    try:
-        from app.services.proactive_service import get_proactive_service
-        proactive_service = get_proactive_service()
-        await proactive_service.start()
-        app.state.proactive_service = proactive_service
-        logger.info("✅ ProactiveService запущен")
-    except Exception as e:
-        logger.warning(f"⚠️ Не удалось запустить ProactiveService: {e}")
-    
-    # Запуск SchedulerService для планирования задач
-    try:
-        from app.services.scheduler_service import get_scheduler_service
-        from app.services.daily_checkin_service import DailyCheckinService
-        from app.db.database import get_db
-        scheduler_service = get_scheduler_service()
-        await scheduler_service.start()
-        app.state.scheduler_service = scheduler_service
-        logger.info("✅ SchedulerService запущен")
-        
-        # Регистрируем ежедневную задачу на 18:30
+    # Фоновый парсер, ProactiveService, Scheduler — только не на Vercel (serverless нет долгоживущего процесса)
+    if not _is_vercel:
         try:
-            from datetime import datetime, timedelta
-            daily_checkin_service = DailyCheckinService()
-            
-            # Вычисляем время следующего выполнения (сегодня 18:30 или завтра, если уже прошло)
-            now = datetime.now()
-            target_time = now.replace(hour=18, minute=30, second=0, microsecond=0)
-            
-            # Если уже прошло 18:30 сегодня, планируем на завтра
-            if now >= target_time:
-                target_time = target_time + timedelta(days=1)
-            
-            # Регистрируем задачу с ежедневным повторением
-            async def send_daily_checkin_task():
-                """Задача для отправки daily check-in."""
-                try:
-                    from app.db.database import AsyncSessionLocal
-                    async with AsyncSessionLocal() as db:
-                        result = await daily_checkin_service.send_daily_questions(db)
-                        logger.info(f"Daily check-in отправлен: {result}")
-                except Exception as e:
-                    logger.error(f"Ошибка при отправке daily check-in: {e}")
-            
-            scheduler_service.schedule_task(
-                task_id="daily_checkin_1830",
-                execute_at=target_time,
-                action=send_daily_checkin_task,
-                action_args={},
-                repeat_interval=timedelta(days=1)
-            )
-            logger.info(f"✅ Ежедневный опрос запланирован на 18:30 (следующий запуск: {target_time})")
+            from app.services.notion_background_parser import NotionBackgroundParser
+            background_parser = NotionBackgroundParser()
+            await background_parser.start()
+            app.state.background_parser = background_parser
+            logger.info("✅ Фоновый парсер страницы встреч запущен")
         except Exception as e:
-            logger.warning(f"⚠️ Не удалось зарегистрировать daily check-in задачу: {e}")
-    except Exception as e:
-        logger.warning(f"⚠️ Не удалось запустить SchedulerService: {e}")
+            logger.warning(f"⚠️ Не удалось запустить фоновый парсер: {e}")
+        
+        try:
+            from app.services.proactive_service import get_proactive_service
+            proactive_service = get_proactive_service()
+            await proactive_service.start()
+            app.state.proactive_service = proactive_service
+            logger.info("✅ ProactiveService запущен")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось запустить ProactiveService: {e}")
+        
+        try:
+            from app.services.scheduler_service import get_scheduler_service
+            from app.services.daily_checkin_service import DailyCheckinService
+            from app.db.database import get_db
+            scheduler_service = get_scheduler_service()
+            await scheduler_service.start()
+            app.state.scheduler_service = scheduler_service
+            logger.info("✅ SchedulerService запущен")
+            
+            try:
+                from datetime import datetime, timedelta
+                daily_checkin_service = DailyCheckinService()
+                now = datetime.now()
+                target_time = now.replace(hour=18, minute=30, second=0, microsecond=0)
+                if now >= target_time:
+                    target_time = target_time + timedelta(days=1)
+                
+                async def send_daily_checkin_task():
+                    try:
+                        from app.db.database import AsyncSessionLocal
+                        async with AsyncSessionLocal() as db:
+                            result = await daily_checkin_service.send_daily_questions(db)
+                            logger.info(f"Daily check-in отправлен: {result}")
+                    except Exception as e:
+                        logger.error(f"Ошибка при отправке daily check-in: {e}")
+                
+                scheduler_service.schedule_task(
+                    task_id="daily_checkin_1830",
+                    execute_at=target_time,
+                    action=send_daily_checkin_task,
+                    action_args={},
+                    repeat_interval=timedelta(days=1)
+                )
+                logger.info(f"✅ Ежедневный опрос запланирован на 18:30 (следующий запуск: {target_time})")
+            except Exception as e:
+                logger.warning(f"⚠️ Не удалось зарегистрировать daily check-in задачу: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ Не удалось запустить SchedulerService: {e}")
+    else:
+        logger.info("⏭ Vercel: фоновые сервисы (парсер, proactive, scheduler) пропущены")
 
 
 @app.on_event("shutdown")

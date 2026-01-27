@@ -108,7 +108,8 @@ class MeetingAgent(BaseAgent):
             # Обычная обработка встречи (если передан transcript)
             # В этом случае user_input должен содержать транскрипт
             workflow_result = await self.meeting_workflow.process_meeting(
-                transcript=user_input
+                transcript=user_input,
+                sender_username=sender_username
             )
             
             # Формируем ответ через персону

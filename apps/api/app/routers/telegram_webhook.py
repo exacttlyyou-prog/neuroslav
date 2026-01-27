@@ -124,6 +124,9 @@ async def telegram_webhook(
             
             logger.info(f"Получен callback_query: {callback_data} от chat_id: {chat_id}")
             
+            # Инициализируем сервисы для обработки callback
+            service = DailyCheckinService()
+            
             # Обрабатываем callback_data
             if callback_data.startswith("menu:"):
                 menu_type = callback_data.split(":")[1]
@@ -223,6 +226,23 @@ async def telegram_webhook(
                             chat_id=chat_id,
                             message=meetings_text
                         )
+                
+                elif menu_type == "search":
+                    # Показываем подсказку для поиска
+                    await service.telegram.send_message_to_user(
+                        chat_id=chat_id,
+                        message="🔍 <b>Поиск по базе знаний</b>\n\n"
+                                "Используй команду /knowledge [запрос]\n\n"
+                                "Пример: /knowledge проект Альфа"
+                    )
+                
+                elif menu_type == "settings":
+                    # Показываем настройки (пока заглушка)
+                    await service.telegram.send_message_to_user(
+                        chat_id=chat_id,
+                        message="⚙️ <b>Настройки</b>\n\n"
+                                "Настройки пока не доступны. В разработке."
+                    )
                 
                 # Отвечаем на callback_query
                 try:
@@ -337,6 +357,17 @@ async def telegram_webhook(
                 
                 logger.info(f"📧 Обработка пересылаемого сообщения через AgentRouter")
                 
+                # МОМЕНТАЛЬНАЯ обратная связь - отправляем сразу при получении пересылаемого сообщения
+                try:
+                    initial_response = get_neural_slav_thinking_response("knowledge")
+                    await service.telegram.send_message_to_user(
+                        chat_id=chat_id,
+                        message=initial_response
+                    )
+                except Exception as auto_response_error:
+                    logger.error(f"❌ Ошибка при отправке автоответа для пересылки: {auto_response_error}")
+                    # Продолжаем обработку даже если автоответ не отправился
+                
                 # Обрабатываем через AgentRouter
                 from app.services.agent_router import AgentRouter
                 router = AgentRouter()
@@ -344,7 +375,8 @@ async def telegram_webhook(
                 classification = await router.classify(forwarded_context)
                 logger.info(f"📋 Классификация пересылки: {classification.agent_type} (уверенность: {classification.confidence:.2f})")
                 
-                agent_response = await router.route(forwarded_context, classification)
+                # Передаем sender_username для привязки к базе данных
+                agent_response = await router.route(forwarded_context, classification, sender_username=sender_username)
                 
                 # Формируем информацию о трассировке агентов
                 trace_info = ""
@@ -522,7 +554,7 @@ async def telegram_webhook(
                     
                     # 3. Проверка базы данных
                     try:
-                        from apps.api.app.db.database import AsyncSessionLocal
+                        from app.db.database import AsyncSessionLocal
                         from sqlalchemy import text
                         
                         async with AsyncSessionLocal() as db:
@@ -1027,6 +1059,15 @@ async def telegram_webhook(
                 chat_id=chat_id,
                 message=clarification
             )
+            # Автоответ отправляется даже для clarification
+            try:
+                initial_response = get_neural_slav_thinking_response()
+                await service.telegram.send_message_to_user(
+                    chat_id=chat_id,
+                    message=initial_response
+                )
+            except Exception as auto_response_error:
+                logger.error(f"❌ Ошибка при отправке автоответа для clarification: {auto_response_error}")
         else:
             # Если идет запись встречи, не обрабатываем сообщения как встречи
             # Просто подтверждаем получение

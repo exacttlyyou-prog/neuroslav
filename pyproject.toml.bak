@@ -1,0 +1,21 @@
+[project]
+name = "neuroslav-api"
+version = "0.1.0"
+description = "Neuroslav API"
+requires-python = ">=3.11,<3.12"
+
+[project.optional-dependencies]
+# Явно исключаем langchain зависимости
+exclude-langchain = []
+
+[tool.poetry]
+name = "neuroslav-api"
+version = "0.1.0"
+description = "Neuroslav API"
+authors = ["exacttlyyou-prog"]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+[tool.uv]
+python = "3.11"

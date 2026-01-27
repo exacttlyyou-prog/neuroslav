@@ -2,8 +2,15 @@
 RAG сервис для работы с ChromaDB (локальная векторная база данных).
 Использует sentence-transformers для эмбеддингов.
 """
-import chromadb
-from chromadb.config import Settings as ChromaSettings
+try:
+    import chromadb
+    from chromadb.config import Settings as ChromaSettings
+    CHROMADB_AVAILABLE = True
+except ImportError:
+    CHROMADB_AVAILABLE = False
+    chromadb = None
+    ChromaSettings = None
+
 from loguru import logger
 from typing import List, Dict, Any, Optional
 from pathlib import Path
@@ -18,6 +25,15 @@ class RAGService:
     def __init__(self):
         from app.config import get_settings
         settings = get_settings()
+        
+        if not CHROMADB_AVAILABLE:
+            logger.warning("⚠️ ChromaDB недоступен (не установлен). RAG функции будут отключены.")
+            self.client = None
+            self.meetings_collection = None
+            self.knowledge_collection = None
+            self.tasks_collection = None
+            self.embedding_model = None
+            return
         
         # Инициализация ChromaDB
         persist_dir = Path(settings.chroma_persist_dir)
@@ -53,14 +69,13 @@ class RAGService:
             self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
             logger.info("Модель загружена")
         except ImportError:
-            logger.error("sentence-transformers не установлен. Установите: pip install sentence-transformers")
-            raise ImportError(
-                "sentence-transformers не установлен. "
-                "Установите: pip install sentence-transformers"
-            )
+            logger.warning("⚠️ sentence-transformers не установлен. RAG функции будут работать без эмбеддингов.")
+            self.embedding_model = None
     
     def _get_embedding(self, text: str) -> List[float]:
         """Получить эмбеддинг текста."""
+        if not self.embedding_model:
+            raise ValueError("Embedding model не доступен. Установите sentence-transformers.")
         return self.embedding_model.encode(text).tolist()
     
     async def add_meeting(self, meeting_id: str, content: str, metadata: Optional[Dict[str, Any]] = None) -> None:
@@ -72,6 +87,10 @@ class RAGService:
             content: Текст встречи
             metadata: Дополнительные метаданные
         """
+        if not self.meetings_collection:
+            logger.warning("⚠️ ChromaDB недоступен. Встреча не добавлена в RAG.")
+            return
+        
         try:
             embedding = self._get_embedding(content)
             metadata = metadata or {}
@@ -100,6 +119,10 @@ class RAGService:
         Returns:
             Список похожих встреч
         """
+        if not self.meetings_collection:
+            logger.warning("⚠️ ChromaDB недоступен. Поиск встреч невозможен.")
+            return []
+        
         try:
             query_embedding = self._get_embedding(query)
             
@@ -132,6 +155,10 @@ class RAGService:
             content: Текст документа
             metadata: Дополнительные метаданные
         """
+        if not self.knowledge_collection:
+            logger.warning("⚠️ ChromaDB недоступен. Документ не добавлен в базу знаний.")
+            return
+        
         try:
             embedding = self._get_embedding(content)
             metadata = metadata or {}
@@ -160,6 +187,13 @@ class RAGService:
         Returns:
             Список релевантных документов
         """
+        if not self.knowledge_collection:
+            logger.warning("⚠️ ChromaDB недоступен. Поиск в базе знаний невозможен.")
+            return []
+        if not self.embedding_model:
+            logger.warning("⚠️ Модель эмбеддингов недоступна (например, на Vercel). Поиск пропущен.")
+            return []
+        
         try:
             query_embedding = self._get_embedding(query)
             
@@ -192,6 +226,10 @@ class RAGService:
             content: Текст задачи
             metadata: Дополнительные метаданные
         """
+        if not self.tasks_collection:
+            logger.warning("⚠️ ChromaDB недоступен. Задача не добавлена в RAG.")
+            return
+        
         try:
             embedding = self._get_embedding(content)
             metadata = metadata or {}
@@ -220,6 +258,10 @@ class RAGService:
         Returns:
             Список похожих задач
         """
+        if not self.tasks_collection:
+            logger.warning("⚠️ ChromaDB недоступен. Поиск задач невозможен.")
+            return []
+        
         try:
             query_embedding = self._get_embedding(query)
             
