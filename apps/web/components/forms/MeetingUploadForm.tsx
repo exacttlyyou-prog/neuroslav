@@ -140,12 +140,9 @@ export function MeetingUploadForm() {
     
     {result && (
       <div className="mt-6">
-        <MeetingResults 
+        <MeetingResults
           result={result}
-          onSend={async () => {
-            // TODO: реализовать отправку через API
-            console.log("Отправка draft:", result.meeting.draftMessage)
-          }}
+          onApproved={() => setResult(null)}
         />
       </div>
     )}

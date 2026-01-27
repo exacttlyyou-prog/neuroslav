@@ -49,9 +49,13 @@ export async function POST(request: NextRequest) {
     const meetingResponse: MeetingProcessingResponse = {
       meeting_id: data.meeting_id,
       summary: data.summary,
+      transcript: data.transcript ?? undefined,
       participants: data.participants || [],
       projects: data.projects || [],
       action_items: data.action_items || [],
+      key_decisions: data.key_decisions ?? undefined,
+      insights: data.insights ?? undefined,
+      next_steps: data.next_steps ?? undefined,
       draft_message: data.draft_message,
       verification_warnings: data.verification_warnings || [],
       requires_approval: data.requires_approval || false,

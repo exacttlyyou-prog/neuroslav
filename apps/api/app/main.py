@@ -243,14 +243,6 @@ async def health():
     return {"status": "healthy"}
 
 
-@app.get("/api/notion/parser/status")
-async def get_parser_status():
-    """Возвращает статус фонового парсера страницы встреч."""
-    if hasattr(app.state, "background_parser"):
-        return app.state.background_parser.get_status()
-    return {"running": False, "error": "Парсер не инициализирован"}
-
-
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
     """Глобальный обработчик исключений."""

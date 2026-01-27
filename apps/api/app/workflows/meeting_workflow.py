@@ -19,6 +19,7 @@ from app.config import get_settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from pathlib import Path
+import asyncio
 import tempfile
 import os
 
@@ -100,7 +101,6 @@ class MeetingWorkflow:
                 raise ValueError("Необходим transcript (минимум 10 символов) или audio_file")
             
             # Шаг 2-3: Параллельная загрузка RAG и синхронизация контекста из Notion
-            import asyncio
             logger.info("Параллельная загрузка контекста (RAG + Notion)...")
             
             # Запускаем обе задачи параллельно
@@ -340,6 +340,7 @@ class MeetingWorkflow:
             
             return {
                 "meeting_id": meeting_id,
+                "transcript": transcript,
                 "summary": analysis.summary_md,
                 "participants": matched_participants,
                 "projects": matched_projects,
