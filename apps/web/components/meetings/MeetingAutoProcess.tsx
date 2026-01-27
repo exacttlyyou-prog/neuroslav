@@ -230,9 +230,21 @@ export function MeetingAutoProcess() {
                     result={{
                       meeting_id: result.processing.meeting_id || "",
                       summary: result.processing.summary || "",
-                      participants: result.processing.participants || [],
-                      projects: result.processing.projects || [],
-                      action_items: result.processing.action_items || [],
+                      participants: (result.processing.participants || []).map(p => ({
+                        ...p,
+                        matched: p.matched ?? false
+                      })),
+                      projects: (result.processing.projects || []).map(p => ({
+                        ...p,
+                        matched: p.matched ?? false
+                      })),
+                      action_items: (result.processing.action_items || []).map(item => ({
+                        text: item.text,
+                        assignee: item.assignee,
+                        priority: (item.priority === 'High' || item.priority === 'Medium' || item.priority === 'Low')
+                          ? item.priority
+                          : 'Medium'
+                      })),
                       verification_warnings: result.processing.verification_warnings || [],
                       requires_approval: true,
                       status: "pending_approval",

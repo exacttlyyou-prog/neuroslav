@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
           let cursor = null
           
           while (hasMore && allBlocks.length < 500) {
-            const blocksResponse = await fetch(
+            const blocksResponse: Response = await fetch(
               `${blocksUrl}${cursor ? `?start_cursor=${cursor}` : ''}`,
               {
                 headers: {
