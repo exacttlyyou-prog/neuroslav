@@ -1,6 +1,6 @@
 """
 Точка входа для Vercel при Root Directory = deploy-api.
-Папка app создаётся при сборке (Build Command: bash copy-app.sh).
+Папка app — копия apps/api/app (держим в репо, т.к. Build Command при builds в vercel.json не выполняется).
 """
 import sys
 from pathlib import Path

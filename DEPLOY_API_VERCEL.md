@@ -10,10 +10,7 @@
    - **Root Directory** — **deploy-api** (именно эта папка; тогда Vercel не видит корневой package.json и не переключает на Next.js).
    - **Framework Preset** — **Other**.
 
-2. **Settings** → **Build & Development** (или **Build and Output Settings**)
-   - **Build Command** — задать: **`bash copy-app.sh`** (скрипт копирует `apps/api/app` в `deploy-api/app`, иначе функция падает с 500 — в бандле нет кода API).
-   - **Output Directory** — оставить пустым.
-   - **Install Command** — не менять.
+2. **Build Command** в настройках проекта **не применяется** при наличии `builds` в vercel.json — Vercel его игнорирует. Код API лежит в **deploy-api/app** (копия apps/api/app); при обновлении бэкенда нужно заново скопировать: `cp -R apps/api/app deploy-api/app` и закоммитить.
 
 После этого сборка идёт только по корневому `vercel.json`: собирается `api/index.py`, все запросы уходят в FastAPI.
 
