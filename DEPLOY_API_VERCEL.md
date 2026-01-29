@@ -11,9 +11,9 @@
    - **Framework Preset** — **Other**.
 
 2. **Settings** → **Build & Development** (или **Build and Output Settings**)
-   - **Build Command** — задать: `echo "api-only"` (или очистить поле). Не оставлять дефолтную команду, иначе Vercel может запустить `npm run build` из корня и задеплоить фронт → 404 на `/health` и webhook.
+   - **Build Command** — задать: **`bash copy-app.sh`** (скрипт копирует `apps/api/app` в `deploy-api/app`, иначе функция падает с 500 — в бандле нет кода API).
    - **Output Directory** — оставить пустым.
-   - **Install Command** — не менять (для Python Vercel сам ставит зависимости из корневого `requirements.txt`).
+   - **Install Command** — не менять.
 
 После этого сборка идёт только по корневому `vercel.json`: собирается `api/index.py`, все запросы уходят в FastAPI.
 
