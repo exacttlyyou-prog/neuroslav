@@ -2,7 +2,9 @@
 Конфигурация приложения через переменные окружения.
 API ключи только через переменные окружения.
 """
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 from functools import lru_cache
 from pathlib import Path
 
@@ -24,6 +26,7 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:8b"
     ollama_max_tokens: int = 4096
     ollama_temperature: float = 0.7
+    ollama_timeout_sec: int = 90  # Таймаут запроса к Ollama (генерация может быть долгой)
     
     # ChromaDB (RAG)
     chroma_persist_dir: str = "./data/vector_db"
@@ -31,8 +34,10 @@ class Settings(BaseSettings):
     # Notion (опционально для разработки)
     notion_token: str | None = None
     notion_mcp_token: str | None = None
-    notion_meeting_page_id: str | None = None
+    notion_ai_context_page_id: str | None = None  # Основная страница AI Context — всё хранится внутри неё. Приоритет над notion_meeting_page_id
+    notion_meeting_page_id: str | None = None  # Fallback: корень, под которым ищут/создают AI Context, встречи, задачи (если не задан notion_ai_context_page_id)
     notion_meeting_minutes_page_id: str | None = None  # Опционально: если не указана, создается автоматически
+    notion_tasks_page_id: str | None = None  # Если задана — задачи из бота пишутся сюда (append block), иначе — дочерняя страница meeting_page_id
     notion_people_db_id: str | None = None
     notion_projects_db_id: str | None = None
     notion_glossary_db_id: str | None = None
@@ -48,8 +53,10 @@ class Settings(BaseSettings):
     telegram_api_id: str | None = None
     telegram_api_hash: str | None = None
     
-    # Database
-    database_url: str = "sqlite:///./data/digital_twin.db"
+    # Database (на Vercel ./data недоступна для записи — используем /tmp)
+    database_url: str = Field(
+        default_factory=lambda: "sqlite:////tmp/digital_twin.db" if os.environ.get("VERCEL") == "1" else "sqlite:///./data/digital_twin.db"
+    )
     
     # API
     api_port: int = 8000

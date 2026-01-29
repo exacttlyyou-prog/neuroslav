@@ -38,7 +38,11 @@
    ```
 4. Написать боту в Telegram. Логи — в Vercel: Deployments → последний деплой → **Runtime Logs**.
 
-## 4. Если всё ещё 404
+## 4. База данных на Vercel
 
-- В **Build Logs** деплоя проверить: есть ли сборка Python (`api/index.py`, `@vercel/python`), нет ли ошибок.
-- Убедиться, что **Build Command** действительно переопределён (`echo "api-only"` или пусто), а не дефолтный `npm run build`.
+На Vercel автоматически используется `sqlite:////tmp/digital_twin.db` (папка `/tmp` доступна для записи, но данные не сохраняются между холодными стартами). Для постоянного хранения нужен внешний Postgres и переменная `DATABASE_URL`.
+
+## 5. Если всё ещё 404 или 500
+
+- **500:** часто из‑за падения при старте (БД, импорты). Убедись, что **Build Command** = `bash copy-app.sh`. На Vercel БД по умолчанию в `/tmp` (см. п. 4). Смотри **Runtime Logs** деплоя — там будет traceback.
+- **404:** в **Build Logs** проверить: есть ли сборка Python (`api/index.py`), нет ли ошибок. **Build Command** должен быть `bash copy-app.sh`.
