@@ -50,10 +50,15 @@ app.include_router(monitoring.router, prefix="/api/monitoring", tags=["monitorin
 @app.on_event("startup")
 async def startup_event():
     """Инициализация при старте приложения."""
-    # Настраиваем структурированное логирование
-    setup_production_logging()
-    
-    await init_db()
+    import os
+    try:
+        setup_production_logging()
+    except Exception as e:
+        logger.warning("⚠️ Логирование: %s", e)
+    try:
+        await init_db()
+    except Exception as e:
+        logger.warning("⚠️ init_db не удался (на Vercel нормально без БД для /health): %s", e)
     
     # Валидация токенов при старте
     import os
@@ -239,8 +244,35 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check endpoint."""
+    """Liveness: процесс жив."""
     return {"status": "healthy"}
+
+
+@app.get("/ready")
+async def ready():
+    """Readiness: зависимости доступны, готов принимать webhook."""
+    ok = True
+    checks = {}
+    try:
+        from app.db.database import AsyncSessionLocal
+        from sqlalchemy import text
+        async with AsyncSessionLocal() as db:
+            await db.execute(text("SELECT 1"))
+        checks["db"] = "ok"
+    except Exception as e:
+        checks["db"] = str(e)[:80]
+        ok = False
+    try:
+        s = get_settings()
+        checks["telegram_configured"] = bool(s.telegram_bot_token)
+        checks["webhook_url"] = bool(s.telegram_webhook_url)
+    except Exception as e:
+        checks["config"] = str(e)[:80]
+        ok = False
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={"status": "ready" if ok else "degraded", "checks": checks}
+    )
 
 
 @app.exception_handler(Exception)

@@ -8,23 +8,17 @@ from loguru import logger
 
 from app.config import get_settings
 
-settings = get_settings()
-
-# Создаем async engine для SQLite
-engine = create_async_engine(
-    settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///"),
-    echo=False,
-    future=True
-)
-
-# Создаем session factory
-AsyncSessionLocal = async_sessionmaker(
-    engine,
-    class_=AsyncSession,
-    expire_on_commit=False
-)
-
 Base = declarative_base()
+
+try:
+    settings = get_settings()
+    _url = settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
+    engine = create_async_engine(_url, echo=False, future=True)
+    AsyncSessionLocal = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+except Exception as e:
+    logger.warning("⚠️ БД при импорте недоступна (на Vercel нормально): %s", e)
+    engine = None
+    AsyncSessionLocal = None
 
 
 async def get_db() -> AsyncSession:
@@ -34,6 +28,8 @@ async def get_db() -> AsyncSession:
     Yields:
         AsyncSession: Сессия базы данных
     """
+    if AsyncSessionLocal is None:
+        raise RuntimeError("БД недоступна (engine не создан при старте)")
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -43,6 +39,9 @@ async def get_db() -> AsyncSession:
 
 async def init_db():
     """Инициализация базы данных - создание таблиц и миграции."""
+    if engine is None:
+        logger.warning("⚠️ init_db пропущен: engine не создан")
+        return
     async with engine.begin() as conn:
         # Создаем все таблицы
         await conn.run_sync(Base.metadata.create_all)

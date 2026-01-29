@@ -4,7 +4,7 @@ API ключи только через переменные окружения.
 """
 import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field
+from pydantic import Field, model_validator
 from functools import lru_cache
 from pathlib import Path
 
@@ -61,6 +61,16 @@ class Settings(BaseSettings):
     # API
     api_port: int = 8000
     api_host: str = "0.0.0.0"
+
+    @model_validator(mode="after")
+    def vercel_db_path(self):
+        """На Vercel принудительно /tmp для SQLite (./data недоступна)."""
+        if os.environ.get("VERCEL") != "1":
+            return self
+        url = getattr(self, "database_url", "") or ""
+        if "data/digital_twin" in url or url.startswith("sqlite:///./"):
+            object.__setattr__(self, "database_url", "sqlite:////tmp/digital_twin.db")
+        return self
 
 
 @lru_cache()
