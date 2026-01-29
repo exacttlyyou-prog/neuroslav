@@ -1,6 +1,7 @@
 # Минимальные зависимости для Vercel deployment (копия корневого requirements.txt)
 # Полный список для локальной разработки: apps/api/requirements.txt
 
+ollama>=0.4.7
 fastapi==0.109.0
 uvicorn[standard]==0.27.0
 python-telegram-bot==21.7

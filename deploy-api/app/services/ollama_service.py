@@ -16,8 +16,11 @@ from tenacity import (
 try:
     import ollama
     from ollama import AsyncClient
+    OLLAMA_AVAILABLE = True
 except ImportError:
-    raise ImportError("Не установлен пакет ollama. Установите: pip install ollama")
+    ollama = None  # type: ignore
+    AsyncClient = None  # type: ignore
+    OLLAMA_AVAILABLE = False
 
 from app.config import get_settings
 from app.core.cache import get_ollama_cache
@@ -32,18 +35,23 @@ class OllamaService:
     def __init__(self, context_loader=None):
         settings = get_settings()
         self.context_loader = context_loader
+        self.model_name = settings.ollama_model
+        self.max_tokens = settings.ollama_max_tokens
+        self.temperature = settings.ollama_temperature
+        self.cache = get_ollama_cache()
+        if not OLLAMA_AVAILABLE or AsyncClient is None:
+            self.client = None
+            return
         # Таймаут передаётся в httpx под капотом; webhook дополнительно ограничивает цепочку 55 сек
         self.client = AsyncClient(
             host=settings.ollama_base_url,
             timeout=float(settings.ollama_timeout_sec)
         )
-        
-        self.model_name = settings.ollama_model
-        self.max_tokens = settings.ollama_max_tokens
-        self.temperature = settings.ollama_temperature
-        
-        # Система кеширования для оптимизации
-        self.cache = get_ollama_cache()
+    
+    def _ensure_client(self):
+        """Проверка доступности клиента Ollama (приложение стартует без ollama, но вызовы требуют клиент)."""
+        if self.client is None:
+            raise RuntimeError("Ollama недоступен: пакет не установлен или сервер не настроен")
     
     @retry(
         stop=stop_after_attempt(3),
@@ -70,6 +78,7 @@ class OllamaService:
         Returns:
             Валидированный объект типа T
         """
+        self._ensure_client()
         try:
             # Формируем контекст из похожих встреч с деталями
             context_text = ""
@@ -364,6 +373,7 @@ class OllamaService:
 
 Ответь строго в формате JSON согласно схеме."""
         
+        self._ensure_client()
         try:
             schema = TaskExtraction.model_json_schema()
             
@@ -455,6 +465,7 @@ class OllamaService:
         Returns:
             Валидированный объект типа T
         """
+        self._ensure_client()
         try:
             schema = response_schema.model_json_schema()
             
@@ -536,6 +547,7 @@ class OllamaService:
 
 Summary:"""
         
+        self._ensure_client()
         try:
             response = await self.client.chat(
                 model=self.model_name,
@@ -626,6 +638,7 @@ Summary:"""
 
 Саммари (кратко, по делу, упомяни проекты и участники если есть):"""
         
+        self._ensure_client()
         try:
             response = await self.client.chat(
                 model=self.model_name,
@@ -686,6 +699,7 @@ Summary:"""
 
 Финальное саммари:"""
         
+        self._ensure_client()
         try:
             response = await self.client.chat(
                 model=self.model_name,
@@ -911,6 +925,7 @@ Summary:"""
 
 ТВОЙ ОТВЕТ (кратко, по-человечески):"""
 
+            self._ensure_client()
             response = await self.client.chat(
                 model=self.model_name,
                 messages=[{"role": "user", "content": prompt}],
